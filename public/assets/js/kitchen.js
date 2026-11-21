@@ -203,7 +203,8 @@ board.addEventListener('submit', async (event) => {
     const request = new AbortController();
     const deadline = setTimeout(() => request.abort(), actionTimeout);
     try {
-        const response = await fetch(event.target.action, {
+        // Read the attribute: the hidden action input shadows the DOM action property.
+        const response = await fetch(event.target.getAttribute('action') || window.location.href, {
             method: 'POST',
             headers: { Accept: 'application/json' },
             body: new FormData(event.target),

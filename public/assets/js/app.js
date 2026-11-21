@@ -6,6 +6,10 @@ const cartStatus = document.querySelector('[data-status]');
 const dialogStatus = document.querySelector('[data-dialog-status]');
 
 let cartRequest = Promise.resolve();
+let cartGeneration = 0;
+let pendingCartChanges = 0;
+let cartNeedsReview = false;
+const cartRequestTimeout = 10000;
 let announcementTimer;
 let dismissAnnouncementTimer;
 let cartOpener;
@@ -67,7 +71,7 @@ function dismissAnnouncement(status) {
     dismissAnnouncementTimer = setTimeout(() => { status.textContent = ''; }, 3500);
 }
 
-function announce(message, isError = false) {
+function announce(message, isError = false, persistent = false) {
     const status = cartDialog?.open ? dialogStatus ?? cartStatus : cartStatus;
     if (!status || !message) return;
 
@@ -78,7 +82,7 @@ function announce(message, isError = false) {
     announcementTimer = setTimeout(() => {
         status.toggleAttribute('data-error', isError);
         status.textContent = message;
-        dismissAnnouncement(status);
+        if (!persistent) dismissAnnouncement(status);
     }, 50);
 }
 
@@ -126,18 +130,81 @@ function renderCart({ cart, cartHtml }) {
     nextControl?.focus({ preventScroll: true });
 }
 
+function updateCartState() {
+    const busy = pendingCartChanges > 0;
+    const limit = cartContent?.querySelector('[data-cart-limit]');
+    const atLimit = limit && Number(limit.dataset.cartCountTotal) >= Number(limit.dataset.cartLimit);
+
+    cartContent?.setAttribute('aria-busy', String(busy));
+    document.querySelectorAll('[data-cart-form]').forEach((form) => {
+        form.setAttribute('aria-busy', String(busy));
+        const button = form.querySelector('button[type="submit"]');
+        if (!button) return;
+        if (button.hasAttribute('data-cart-wait')) {
+            button.disabled = false;
+            button.removeAttribute('data-cart-wait');
+        }
+        const action = form.elements.namedItem('action')?.value;
+        const limitApplies = atLimit && ['add', 'increment'].includes(action);
+        if (limitApplies && !button.disabled) {
+            button.disabled = true;
+            button.setAttribute('data-cart-limit-disabled', '');
+        } else if (!limitApplies && button.hasAttribute('data-cart-limit-disabled')) {
+            button.disabled = false;
+            button.removeAttribute('data-cart-limit-disabled');
+        }
+        if ((busy || cartNeedsReview) && !button.disabled) {
+            button.disabled = true;
+            button.setAttribute('data-cart-wait', '');
+        }
+    });
+    document.querySelectorAll('[data-checkout]').forEach((link) => {
+        if (busy || cartNeedsReview) link.setAttribute('aria-disabled', 'true');
+        else link.removeAttribute('aria-disabled');
+    });
+    document.querySelectorAll('[data-cart-recovery]').forEach((notice) => {
+        notice.hidden = !cartNeedsReview;
+    });
+}
+
+function requestCartReview() {
+    announce('A última alteração não foi confirmada. Abra o carrinho e use “Recarregar e conferir carrinho” antes de continuar.', true, true);
+}
+
 async function updateCart(url, body) {
+    const controller = new AbortController();
+    let deadline;
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { Accept: 'application/json' },
-            body,
+        // A timeout cannot tell us whether the server applied the POST. Never retry it automatically.
+        const timeout = new Promise((resolve, reject) => {
+            deadline = setTimeout(() => {
+                controller.abort();
+                reject(new Error('A atualização demorou demais.'));
+            }, cartRequestTimeout);
         });
-        const payload = await response.json();
+        const request = (async () => {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { Accept: 'application/json' },
+                body,
+                signal: controller.signal,
+            });
+            return { response, payload: await response.json() };
+        })();
+        const { response, payload } = await Promise.race([request, timeout]);
+        const reconciled = typeof payload?.cartHtml === 'string'
+            && Number.isSafeInteger(payload.cart?.count) && payload.cart.count >= 0
+            && Number.isSafeInteger(payload.cart?.totalCents) && payload.cart.totalCents >= 0;
+        if (!reconciled) throw new Error('O carrinho não foi confirmado.');
         renderCart(payload);
         announce(payload.message || (response.ok ? 'Carrinho atualizado.' : 'Não foi possível atualizar o carrinho.'), !response.ok);
+        return { successful: response.ok, reconciled: true };
     } catch {
-        announce('Não foi possível confirmar a atualização do carrinho. Recarregue a página para conferir.', true);
+        cartNeedsReview = true;
+        requestCartReview();
+        return { successful: false, reconciled: false };
+    } finally {
+        clearTimeout(deadline);
     }
 }
 
@@ -146,18 +213,52 @@ document.addEventListener('submit', (event) => {
     if (!form.matches('[data-cart-form]')) return;
 
     event.preventDefault();
-    const url = form.action;
+    if (cartNeedsReview) {
+        requestCartReview();
+        return;
+    }
+    // A control named "action" shadows HTMLFormElement.action in browsers.
+    const url = form.getAttribute('action') || window.location.href;
     const body = new FormData(form);
-    cartRequest = cartRequest.then(() => updateCart(url, body));
+    const generation = cartGeneration;
+    pendingCartChanges += 1;
+    updateCartState();
+    announce('Atualizando carrinho…', false, true);
+    cartRequest = cartRequest.then(async () => {
+        if (generation !== cartGeneration || cartNeedsReview) return;
+        const result = await updateCart(url, body);
+        if (!result.successful) cartGeneration += 1;
+    }).finally(() => {
+        pendingCartChanges -= 1;
+        updateCartState();
+    });
 });
 
 cartContent?.addEventListener('click', (event) => {
     const link = event.target.closest('[data-checkout]');
-    if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!link) return;
+    if (cartNeedsReview) {
+        event.preventDefault();
+        requestCartReview();
+        return;
+    }
+    const modified = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+    if (modified && pendingCartChanges === 0) return;
 
     event.preventDefault();
-    cartRequest.then(() => { window.location.assign(link.href); });
+    if (modified) {
+        announce('Aguarde a atualização do carrinho antes de abrir o checkout.', false, true);
+        return;
+    }
+    const generation = cartGeneration;
+    cartRequest.then(() => {
+        if (cartNeedsReview) requestCartReview();
+        else if (generation === cartGeneration) window.location.assign(link.href);
+        else announce('Confira o carrinho atualizado e selecione Finalizar pedido novamente.', true, true);
+    });
 });
+
+updateCartState();
 
 const filters = document.querySelectorAll('[data-filter]');
 const menuSections = document.querySelectorAll('[data-category]');

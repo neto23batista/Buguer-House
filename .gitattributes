@@ -1,2 +1,2 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Keep scripts and migration checksums consistent on Windows, Linux, and containers.
+* text=auto eol=lf

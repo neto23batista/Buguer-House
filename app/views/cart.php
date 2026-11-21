@@ -1,6 +1,18 @@
 <?php if (!empty($cartReview)): ?>
     <p class="cart-review" role="status"><?= escape($cartReview) ?></p>
 <?php endif; ?>
+<p class="cart-review" data-cart-limit="<?= MAX_ORDER_ITEMS ?>" data-cart-count-total="<?= $cart['count'] ?>">
+    <?php if ($cart['count'] >= MAX_ORDER_ITEMS): ?>
+        <?= $cart['count'] > MAX_ORDER_ITEMS ? 'Seu carrinho excede o limite.' : 'Limite atingido.' ?>
+        O limite é de <?= MAX_ORDER_ITEMS ?> unidades por pedido. Diminua as quantidades para adicionar outros itens.
+    <?php else: ?>
+        Até <?= MAX_ORDER_ITEMS ?> unidades por pedido.
+    <?php endif; ?>
+</p>
+<p class="cart-review" data-cart-recovery role="alert" hidden>
+    Não foi possível confirmar a última alteração. Confira o carrinho antes de continuar.
+    <a href="./?carrinho=1#carrinho">Recarregar e conferir carrinho</a>
+</p>
 <?php if ($cart['items']): ?>
     <ul class="cart-items">
         <?php foreach ($cart['items'] as $item): ?>
@@ -29,7 +41,7 @@
                                 <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
                                 <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
                                 <input type="hidden" name="action" value="increment">
-                                <button type="submit" aria-label="Aumentar quantidade de <?= escape($product['name']) ?>" <?= $item['quantity'] >= MAX_QUANTITY ? 'disabled' : '' ?>>+</button>
+                                <button type="submit" aria-label="Aumentar quantidade de <?= escape($product['name']) ?>" <?= $cart['count'] >= MAX_ORDER_ITEMS ? 'disabled' : '' ?>>+</button>
                             </form>
                         </div>
                         <form action="./?carrinho=1" method="post" data-cart-form>
@@ -57,7 +69,11 @@
 </div>
 <?php if ($cart['items']): ?>
     <div class="cart-checkout">
-        <a class="primary-button" href="checkout.php" data-checkout>Finalizar pedido <span aria-hidden="true">→</span></a>
+        <?php if ($cart['count'] <= MAX_ORDER_ITEMS): ?>
+            <a class="primary-button" href="checkout.php" data-checkout>Finalizar pedido <span aria-hidden="true">→</span></a>
+        <?php else: ?>
+            <p role="alert">Diminua as quantidades para finalizar o pedido.</p>
+        <?php endif; ?>
         <p>Retirada no balcão · Pagamento na retirada</p>
     </div>
 <?php endif; ?>

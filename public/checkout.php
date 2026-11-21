@@ -6,6 +6,7 @@ require __DIR__ . '/../app/catalog.php';
 require __DIR__ . '/../app/cart.php';
 require __DIR__ . '/../app/session.php';
 require __DIR__ . '/../app/orders.php';
+require __DIR__ . '/../app/presentation.php';
 
 startBurgerSession();
 header('Cache-Control: no-store');
@@ -32,6 +33,7 @@ $store = null;
 $availability = null;
 $cartReview = $_SESSION['cart_review'] ?? '';
 $statuses = orderStatuses();
+$isDemo = presentationDemoMode();
 
 try {
     if ($isReceipt) {
@@ -203,6 +205,7 @@ if ($polling) {
     <meta name="theme-color" content="#fbf7ed">
     <meta name="robots" content="noindex, nofollow">
     <title><?= $title ?> | Burger House</title>
+    <?php renderPresentationHead($title . ' | Burger House', ''); ?>
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/customer.css">
     <link rel="stylesheet" href="assets/css/checkout.css">
@@ -220,6 +223,12 @@ if ($polling) {
     </header>
 
     <main class="shell checkout-main">
+        <?php if ($isDemo): ?>
+            <aside class="demo-notice" aria-label="Demonstração do projeto">
+                <strong>Pedido de demonstração</strong>
+                <p>Este projeto faz parte de um portfólio. Use dados fictícios: por exemplo, Cliente Demo e (11) 90000-0000. Nenhuma compra real será realizada.</p>
+            </aside>
+        <?php endif; ?>
         <?php if ($unavailable): ?>
             <div class="checkout-state checkout-card">
                 <h1>Pedido indisponível</h1>
@@ -288,14 +297,15 @@ if ($polling) {
                 <input type="hidden" name="checkout_token" value="<?= escape($draft['token']) ?>">
                 <section class="checkout-card customer-card" aria-labelledby="customer-title">
                     <h2 id="customer-title">Seus dados</h2>
+                    <?php if ($isDemo): ?><p class="demo-fields-hint">Preencha somente dados fictícios para testar.</p><?php endif; ?>
                     <div class="checkout-field">
                         <label for="customer-name">Nome</label>
-                        <input id="customer-name" name="name" required maxlength="100" autocomplete="name" value="<?= escape($customer['name']) ?>" <?= isset($errors['name']) ? 'aria-invalid="true" aria-describedby="name-error"' : '' ?>>
+                        <input id="customer-name" name="name" required maxlength="100" autocomplete="<?= $isDemo ? 'off' : 'name' ?>" value="<?= escape($customer['name']) ?>" <?= isset($errors['name']) ? 'aria-invalid="true" aria-describedby="name-error"' : '' ?>>
                         <?php if (isset($errors['name'])): ?><span class="field-error" id="name-error"><?= escape($errors['name']) ?></span><?php endif; ?>
                     </div>
                     <div class="checkout-field">
                         <label for="customer-phone">Telefone com DDD</label>
-                        <input id="customer-phone" name="phone" type="tel" required maxlength="25" autocomplete="tel" placeholder="(11) 91234-5678" value="<?= escape($customer['phone']) ?>" <?= isset($errors['phone']) ? 'aria-invalid="true" aria-describedby="phone-error"' : '' ?>>
+                        <input id="customer-phone" name="phone" type="tel" required maxlength="25" autocomplete="<?= $isDemo ? 'off' : 'tel' ?>" placeholder="<?= $isDemo ? '(11) 90000-0000' : '(11) 91234-5678' ?>" value="<?= escape($customer['phone']) ?>" <?= isset($errors['phone']) ? 'aria-invalid="true" aria-describedby="phone-error"' : '' ?>>
                         <?php if (isset($errors['phone'])): ?><span class="field-error" id="phone-error"><?= escape($errors['phone']) ?></span><?php endif; ?>
                     </div>
                     <div class="checkout-field">
@@ -322,7 +332,7 @@ if ($polling) {
                         <?php endif; ?>
                     </dl>
                     <div class="summary-total"><span>Total</span><strong><?= price($cart['totalCents']) ?></strong></div>
-                    <button class="primary-button submit-order" type="submit" <?= $availability['accepting'] ? '' : 'disabled' ?>>Enviar pedido <span aria-hidden="true">→</span></button>
+                    <button class="primary-button submit-order" type="submit" <?= $availability['accepting'] ? '' : 'disabled' ?>><?= $isDemo ? 'Enviar pedido de teste' : 'Enviar pedido' ?> <span aria-hidden="true">→</span></button>
                 </aside>
             </form>
         <?php endif; ?>

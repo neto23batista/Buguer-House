@@ -1,0 +1,50 @@
+name: Verify application
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: integration-only-password
+          MYSQL_DATABASE: burger_house_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pintegration-only-password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Docker Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+      - name: Build production runtime
+        run: docker build -t burger-house:ci .
+      - name: Validate web server configuration
+        run: docker run --rm burger-house:ci frankenphp validate --config /etc/caddy/Caddyfile
+      - name: Check PHP syntax
+        run: find app public bin tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Check browser JavaScript syntax
+        run: for file in public/assets/js/*.js; do node --check "$file"; done
+      - name: Run PHP, JavaScript, and MySQL integration tests
+        env:
+          APP_ENV: test
+          DB_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=burger_house_test;charset=utf8mb4
+          DB_TEST_USER: root
+          DB_TEST_PASSWORD: integration-only-password
+          REQUIRE_DB_TESTS: '1'
+        run: php tests/run.php

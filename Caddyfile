@@ -1,0 +1,31 @@
+{
+	auto_https off
+	admin off
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32 ::1/128}
+		trusted_proxies_strict
+	}
+}
+
+:{$PORT:80} {
+	root * /app/public
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+	@private path /.git* /.env* /app/* /bin/* /database/* /tests/* /README.md /Dockerfile /Caddyfile
+	respond @private 404
+	@assets path /assets/* /favicon.svg
+	header @assets Cache-Control "public, max-age=3600"
+	# Access logs are deliberately disabled: private tracking links contain a query token.
+	# Runtime failures remain on stderr. Configure provider-level URL redaction separately.
+	php_server {
+		env REMOTE_ADDR {client_ip}
+		try_files {http.request.uri.path} {http.request.uri.path}/index.php =404
+	}
+}

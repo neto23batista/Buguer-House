@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-const MAX_QUANTITY = 99;
+require_once __DIR__ . '/limits.php';
 
 function availableQuantities(array $quantities, array $products): array
 {
     return array_filter(
         array_intersect_key($quantities, $products),
-        static fn ($quantity): bool => is_int($quantity) && $quantity > 0 && $quantity <= MAX_QUANTITY,
+        // Keep existing carts editable if the order limit has since been lowered.
+        static fn ($quantity): bool => is_int($quantity) && $quantity > 0,
     );
 }
 
@@ -42,10 +43,10 @@ function updateCart(array &$quantities, array $products, array $input, string $c
 
     if ($action === 'decrement') {
         $quantities[$id] = $quantity - 1;
-    } elseif ($quantity < MAX_QUANTITY) {
+    } elseif (array_sum($quantities) < MAX_ORDER_ITEMS) {
         $quantities[$id] = $quantity + 1;
     } else {
-        return [422, 'O limite é de 99 unidades por produto.'];
+        return [422, 'O limite é de ' . MAX_ORDER_ITEMS . ' unidades por pedido. Remova um item antes de adicionar outro.'];
     }
 
     if ($action === 'add') {

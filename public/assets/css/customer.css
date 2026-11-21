@@ -36,7 +36,7 @@
     min-height: 68px;
 }
 
-.site-nav { margin-left: auto; }
+.site-nav { display: flex; gap: 18px; margin-left: auto; }
 .site-nav a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; font-size: .92rem; }
 .site-nav a:hover, .pickup-order:hover { text-decoration: underline; text-underline-offset: 4px; }
 
@@ -238,9 +238,33 @@
 
 .site-footer .brand, .site-footer .brand-name b, .site-footer .brand-mark { color: inherit; }
 .site-footer a:focus-visible { outline-color: var(--customer-surface); }
-.footer-management, .footer-top { display: inline-flex; align-items: center; min-height: 40px; font-size: .85rem; }
-.footer-management:hover, .footer-top:hover { text-decoration: underline; text-underline-offset: 3px; }
+.footer-contact, .footer-top { display: inline-flex; align-items: center; min-height: 40px; font-size: .85rem; }
+.footer-contact:hover, .footer-top:hover { text-decoration: underline; text-underline-offset: 3px; }
 .footer-top span { margin-left: 5px; }
+
+.demo-notice { padding-block: 14px; border-bottom: 1px solid var(--line); font-size: .88rem; }
+.demo-notice strong { color: var(--rust); }
+.demo-notice p { max-width: 85ch; margin: 3px 0 0; color: var(--muted); }
+.store-details {
+    display: grid;
+    grid-template-columns: minmax(0, .89fr) minmax(0, 1.11fr);
+    gap: 28px clamp(28px, 5vw, 76px);
+    padding-block: 28px 48px;
+    border-top: 1px solid var(--line);
+    scroll-margin-top: 88px;
+}
+.store-details h2 { margin: 0 0 14px; font: 400 1.8rem / 1.2 var(--customer-display); }
+.store-details h3 { margin: 0 0 7px; font-size: 1rem; }
+.store-details p { color: var(--muted); font-size: .9rem; }
+.store-details address { max-width: 38ch; font-style: normal; overflow-wrap: anywhere; }
+.store-contact { display: inline-flex; align-items: center; min-height: 44px; color: var(--rust); font-weight: 700; }
+.store-contact:hover { text-decoration: underline; text-underline-offset: 3px; }
+.store-details .hours-timezone { margin: 0 0 13px; font-size: .8rem; }
+.store-hours { margin: 0; font-size: .87rem; }
+.store-hours div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-block: 7px; border-bottom: 1px solid var(--line); }
+.store-hours dt { flex: 0 0 130px; }
+.store-hours dd { margin: 0; color: var(--muted); text-align: right; }
+.store-details .special-dates-title { margin-top: 24px; }
 
 .cart-heading h2 { font: 400 1.65rem / 1.12 var(--customer-display); text-transform: none; }
 .cart-dialog::backdrop { background: rgb(37 33 27 / 52%); }
@@ -276,6 +300,8 @@
     .menu h2 { margin-bottom: 3px; }
     .menu-sections, .menu-category[data-category="burgers"] .product-grid { grid-template-columns: minmax(0, 1fr); }
     .product { padding-block: 11px; }
+    .store-details { grid-template-columns: minmax(0, 1fr); padding-bottom: 32px; }
+    .store-hours dt { flex-basis: 115px; }
 }
 
 @media (max-width: 600px) {

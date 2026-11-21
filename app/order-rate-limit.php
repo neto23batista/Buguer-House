@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/limits.php';
+
 const ORDER_WINDOW_SECONDS = 900;
 const MAX_ORDERS_PER_PHONE = 3;
 const MAX_ORDERS_PER_ORIGIN = 20;
-const MAX_ORDER_ITEMS = 40;
 
 final class OrderRateLimitException extends DomainException
 {

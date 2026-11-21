@@ -2,31 +2,7 @@
 
 declare(strict_types=1);
 
-function databaseSetting(string $key, string $default): string
-{
-    $value = getenv($key);
-    return $value === false ? $default : $value;
-}
-
-function databaseConnection(): PDO
-{
-    $host = databaseSetting('DB_HOST', '127.0.0.1');
-    $port = databaseSetting('DB_PORT', '3306');
-    $database = databaseSetting('DB_NAME', 'burger_house');
-
-    $connection = new PDO(
-        "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4",
-        databaseSetting('DB_USER', 'bh_web'),
-        databaseSetting('DB_PASSWORD', ''),
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ],
-    );
-    $connection->exec("SET time_zone = '+00:00'");
-    return $connection;
-}
+require_once __DIR__ . '/database.php';
 
 function loadProducts(?PDO $connection = null): array
 {

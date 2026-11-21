@@ -29,6 +29,7 @@
 
         <section class="admin-panel store-panel store-profile" aria-labelledby="store-profile-title">
             <h2 id="store-profile-title">Retirada e atendimento</h2>
+            <p class="store-hint">Antes de liberar novos pedidos, informe o endereço de retirada e confira os horários. Uma loja sem endereço não aceita pedidos.</p>
             <div class="admin-editor-field">
                 <label for="store-address">Endereço de retirada</label>
                 <input id="store-address" name="pickup_address" maxlength="250"

@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+/.vercel/
+/vendor/
+/node_modules/
+/backups/
+/coverage/
+*.log
+*.sql.gz
+*.pem
+*.key
+.DS_Store
+Thumbs.db

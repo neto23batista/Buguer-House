@@ -6,6 +6,7 @@ require __DIR__ . '/../app/catalog.php';
 require __DIR__ . '/../app/cart.php';
 require __DIR__ . '/../app/session.php';
 require __DIR__ . '/../app/store.php';
+require __DIR__ . '/../app/presentation.php';
 
 startBurgerSession();
 
@@ -100,15 +101,21 @@ $menuGroups = [];
 foreach ($products as $product) {
     $menuGroups[$product['category']][] = $product;
 }
+$isDemo = presentationDemoMode();
+$contact = presentationContact();
+$description = $isDemo
+    ? 'Projeto de portfólio: explore o cardápio e experimente o fluxo de pedidos da Burger House com dados fictícios.'
+    : 'Smash burgers na chapa, fritas da casa e milk-shake. Explore o cardápio da Burger House e monte seu pedido.';
 ?>
 <!doctype html>
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Smash burgers na chapa, fritas da casa e milk-shake. Explore o cardápio da Burger House e monte seu pedido.">
+    <meta name="description" content="<?= escape($description) ?>">
     <meta name="theme-color" content="#fbf7ed">
     <title>Burger House — Smash Burgers</title>
+    <?php renderPresentationHead('Burger House — Smash Burgers', $description, true); ?>
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/customer.css">
     <script src="assets/js/app.js" defer></script>
@@ -123,6 +130,7 @@ foreach ($products as $product) {
             </a>
             <nav class="site-nav" aria-label="Navegação principal">
                 <a href="#cardapio">Cardápio</a>
+                <a href="#atendimento">Atendimento</a>
             </nav>
             <a class="cart-link" href="./?carrinho=1#carrinho" data-cart-open>
                 <span class="bag-icon" aria-hidden="true"></span>
@@ -133,6 +141,12 @@ foreach ($products as $product) {
     </header>
 
     <main>
+        <?php if ($isDemo): ?>
+            <aside class="shell demo-notice" aria-label="Demonstração do projeto">
+                <strong>Projeto de portfólio</strong>
+                <p>Esta é uma demonstração da Burger House. Explore o cardápio e teste o pedido com dados fictícios. Nenhuma compra real será realizada.</p>
+            </aside>
+        <?php endif; ?>
         <dialog id="carrinho" class="cart-dialog<?= $cartPage ? ' is-page' : '' ?>" aria-labelledby="cart-title" <?= $cartPage ? 'open' : '' ?>>
             <div class="cart-heading">
                 <h2 id="cart-title">Seu carrinho</h2>
@@ -230,6 +244,42 @@ foreach ($products as $product) {
                 <p class="menu-notice" role="status" data-filter-empty hidden>Nenhum produto nesta categoria.</p>
             <?php endif; ?>
         </section>
+
+        <section class="shell store-details" id="atendimento" aria-labelledby="store-details-title">
+            <div class="store-details-intro">
+                <h2 id="store-details-title">Horários e retirada</h2>
+                <p>Retirada no balcão. Pagamento na retirada.</p>
+                <?php if ($store && $store['pickup_address'] !== ''): ?>
+                    <address><?= escape($store['pickup_address']) ?></address>
+                <?php else: ?>
+                    <p>A retirada está temporariamente indisponível.</p>
+                <?php endif; ?>
+                <?php if ($contact): ?>
+                    <p><span>Fale com a loja</span><br><a class="store-contact" href="<?= escape($contact['href']) ?>"><?= escape($contact['label']) ?></a></p>
+                <?php endif; ?>
+            </div>
+            <?php if ($store): ?>
+                <div class="store-details-hours">
+                    <h3>Horários de atendimento</h3>
+                    <p class="hours-timezone">Horário de Brasília. Datas especiais substituem o horário semanal.</p>
+                    <dl class="store-hours">
+                        <?php foreach (storeWeekdays() as $day => $label): ?>
+                            <div><dt><?= escape($label) ?></dt><dd><?= escape(presentationHours($store['schedule'][$day] ?? [])) ?></dd></div>
+                        <?php endforeach; ?>
+                    </dl>
+                    <?php $specialDates = presentationSpecialDates($store['exceptions']); ?>
+                    <?php if ($specialDates): ?>
+                        <h3 class="special-dates-title">Datas especiais</h3>
+                        <dl class="store-hours">
+                            <?php foreach ($specialDates as $date => $intervals): ?>
+                                <?php $specialDate = new DateTimeImmutable($date, new DateTimeZone('America/Sao_Paulo')); ?>
+                                <div><dt><?= $specialDate->format('d/m/Y') ?></dt><dd><?= escape(presentationHours($intervals)) ?></dd></div>
+                            <?php endforeach; ?>
+                        </dl>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </section>
     </main>
 
     <footer class="site-footer">
@@ -238,7 +288,7 @@ foreach ($products as $product) {
                 <span class="brand-mark" aria-hidden="true"><i></i></span>
                 <span class="brand-name">BURGER <b>HOUSE</b></span>
             </a>
-            <a class="footer-management" href="admin/">Painel administrativo</a>
+            <a class="footer-contact" href="#atendimento">Horários e contato</a>
             <a class="footer-top" href="#inicio">Voltar ao início <span aria-hidden="true">↑</span></a>
         </div>
     </footer>

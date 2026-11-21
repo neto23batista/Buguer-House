@@ -15,6 +15,16 @@ function storeWeekdays(): array
     ];
 }
 
+function storePickupAddress(string $address): string
+{
+    $address = trim($address);
+    if ($address === '') {
+        $address = trim((string) getenv('STORE_PICKUP_ADDRESS'));
+    }
+
+    return preg_match('/\A[^\p{C}]{1,250}\z/u', $address) === 1 ? $address : '';
+}
+
 function loadStore(PDO $db, bool $lock = false): array
 {
     $sql = 'SELECT pickup_address, prep_minutes, paused, schedule, exceptions FROM store_settings WHERE id = 1';
@@ -24,7 +34,7 @@ function loadStore(PDO $db, bool $lock = false): array
     }
 
     return [
-        'pickup_address' => $row['pickup_address'] !== '' ? $row['pickup_address'] : trim((string) getenv('STORE_PICKUP_ADDRESS')),
+        'pickup_address' => storePickupAddress($row['pickup_address']),
         'pickup_address_input' => $row['pickup_address'],
         'prep_minutes' => (int) $row['prep_minutes'],
         'paused' => (bool) $row['paused'],
@@ -55,6 +65,16 @@ function storeIntervalsOn(array $settings, DateTimeImmutable $date): array
 
 function storeAvailability(array $settings, ?DateTimeImmutable $now = null): array
 {
+    if (trim((string) ($settings['pickup_address'] ?? '')) === '') {
+        return [
+            'accepting' => false,
+            'state' => 'unavailable',
+            'label' => 'Pedidos indisponíveis',
+            'message' => 'A retirada está temporariamente indisponível. Consulte as informações de atendimento.',
+            'next_open' => null,
+        ];
+    }
+
     if ($settings['paused']) {
         return [
             'accepting' => false,
@@ -164,6 +184,8 @@ function validateStoreSettings(array $input): array
     $errors = [];
     if (!preg_match('/\A[^\p{C}]{0,250}\z/u', $address)) {
         $errors['pickup_address'] = 'Use até 250 caracteres no endereço.';
+    } elseif (!$paused && storePickupAddress($address) === '') {
+        $errors['pickup_address'] = 'Informe o endereço de retirada antes de liberar novos pedidos.';
     }
     if (!preg_match('/\A[0-9]{1,3}\z/', $minutes) || (int) $minutes < 5 || (int) $minutes > 240) {
         $errors['prep_minutes'] = 'Informe entre 5 e 240 minutos.';
