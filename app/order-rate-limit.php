@@ -44,10 +44,10 @@ function consumeOrderQuota(PDO $db, string $phone, ?string $clientAddress): void
 
     $reset = $db->prepare(
         'INSERT INTO order_rate_limits (source_hash, order_count, expires_at)
-         VALUES (?, 0, TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP())) AS next_window
+         VALUES (?, 0, TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP()))
          ON DUPLICATE KEY UPDATE
              order_count = IF(order_rate_limits.expires_at <= UTC_TIMESTAMP(), 0, order_rate_limits.order_count),
-             expires_at = IF(order_rate_limits.expires_at <= UTC_TIMESTAMP(), next_window.expires_at, order_rate_limits.expires_at)',
+             expires_at = IF(order_rate_limits.expires_at <= UTC_TIMESTAMP(), TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP()), order_rate_limits.expires_at)',
     );
     $status = $db->prepare(
         'SELECT order_count, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), expires_at) AS seconds_left
@@ -56,7 +56,7 @@ function consumeOrderQuota(PDO $db, string $phone, ?string $clientAddress): void
     $increment = $db->prepare('UPDATE order_rate_limits SET order_count = order_count + 1 WHERE source_hash = ?');
 
     foreach ($limits as $key => $maximum) {
-        $reset->execute([$key, ORDER_WINDOW_SECONDS]);
+        $reset->execute([$key, ORDER_WINDOW_SECONDS, ORDER_WINDOW_SECONDS]);
         $status->execute([$key]);
         $current = $status->fetch(PDO::FETCH_ASSOC);
         if ((int) $current['order_count'] >= $maximum) {

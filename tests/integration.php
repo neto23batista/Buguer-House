@@ -27,16 +27,18 @@ function integrationDatabase(): PDO
     if (!str_ends_with($match[1], '_test') && !str_starts_with($match[1], 'bh_test_')) {
         throw new RuntimeException('Integração recusada: use um banco dedicado com nome terminado em _test ou iniciado por bh_test_.');
     }
-    ini_set('mysqlnd.net_read_timeout', '10');
+    $config = databaseConfiguration();
+    ini_set('mysqlnd.net_read_timeout', (string) $config['read_timeout']);
     $db = new PDO($dsn, databaseSetting('DB_TEST_USER', databaseSetting('DB_USER', 'root')),
-        databaseSetting('DB_TEST_PASSWORD', databaseSetting('DB_PASSWORD', '')), [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-            PDO::ATTR_TIMEOUT => 5,
-        ]);
+        databaseSetting('DB_TEST_PASSWORD', databaseSetting('DB_PASSWORD', '')), $config['options']);
     if ($db->query('SELECT DATABASE()')->fetchColumn() !== $match[1]) {
         throw new RuntimeException('O banco conectado não corresponde ao banco de teste solicitado.');
+    }
+    if ($config['tls']) {
+        $status = $db->query("SHOW SESSION STATUS LIKE 'Ssl_cipher'")->fetch();
+        if (!$status || ($status['Value'] ?? '') === '') {
+            throw new PDOException('O banco não estabeleceu a conexão TLS exigida.');
+        }
     }
     $db->exec("SET time_zone = '+00:00'");
     $db->exec('SET SESSION innodb_lock_wait_timeout=5');
@@ -196,6 +198,29 @@ try {
     }
     testThrows(fn () => placeOrder($db, bin2hex(random_bytes(32)), $customer, $quantities, $fingerprint, $address), OrderRateLimitException::class,
         'quarto pedido pelo mesmo telefone é bloqueado');
+    $phoneQuotaKey = hash('sha256', "order-phone\0" . $phone);
+    $expireQuota = $db->prepare('UPDATE order_rate_limits SET expires_at=UTC_TIMESTAMP()-INTERVAL 1 SECOND WHERE source_hash=?');
+    $expireQuota->execute([$phoneQuotaKey]);
+    $db->beginTransaction();
+    consumeOrderQuota($db, $phone, null);
+    $db->commit();
+    $quotaDetails = $db->prepare('SELECT order_count, expires_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), expires_at) AS seconds_left FROM order_rate_limits WHERE source_hash=?');
+    $quotaDetails->execute([$phoneQuotaKey]);
+    $renewedQuota = $quotaDetails->fetch();
+    testSame(1, (int) $renewedQuota['order_count'], 'janela expirada reinicia a contagem antes de consumir a nova cota');
+    testAssert((int) $renewedQuota['seconds_left'] > 0 && (int) $renewedQuota['seconds_left'] <= ORDER_WINDOW_SECONDS,
+        'renovar janela expirada define uma nova expiração');
+    $shortenQuota = $db->prepare('UPDATE order_rate_limits SET expires_at=TIMESTAMPADD(SECOND, 120, UTC_TIMESTAMP()) WHERE source_hash=?');
+    $shortenQuota->execute([$phoneQuotaKey]);
+    $quotaDetails->execute([$phoneQuotaKey]);
+    $fixedExpiry = $quotaDetails->fetch()['expires_at'];
+    $db->beginTransaction();
+    consumeOrderQuota($db, $phone, null);
+    $db->commit();
+    $quotaDetails->execute([$phoneQuotaKey]);
+    $activeQuota = $quotaDetails->fetch();
+    testSame(2, (int) $activeQuota['order_count'], 'janela ativa acumula a cota consumida');
+    testSame($fixedExpiry, $activeQuota['expires_at'], 'consumir cota em janela ativa não prolonga sua expiração');
     $largeCart = [$productId => 41];
     testThrows(fn () => placeOrder($db, bin2hex(random_bytes(32)), $customer, $largeCart,
         cartFingerprint(cartSummary($largeCart, loadProducts($db))), $address), OrderRateLimitException::class,
@@ -302,13 +327,17 @@ try {
                 }
                 $db->exec('DELETE FROM products WHERE id=' . $productId);
             }
-            $deleteQuota = $db->prepare('DELETE FROM order_rate_limits WHERE source_hash=?');
-            foreach ($phones as $fixturePhone) {
-                $deleteQuota->execute([hash('sha256', "order-phone\0" . $fixturePhone)]);
+            if ($phones !== []) {
+                $deleteQuota = $db->prepare('DELETE FROM order_rate_limits WHERE source_hash=?');
+                foreach ($phones as $fixturePhone) {
+                    $deleteQuota->execute([hash('sha256', "order-phone\0" . $fixturePhone)]);
+                }
             }
-            $deleteLogin = $db->prepare('DELETE FROM admin_login_attempts WHERE bucket=?');
-            foreach ($loginKeys as $key) {
-                $deleteLogin->execute([$key]);
+            if ($loginKeys !== []) {
+                $deleteLogin = $db->prepare('DELETE FROM admin_login_attempts WHERE bucket=?');
+                foreach ($loginKeys as $key) {
+                    $deleteLogin->execute([$key]);
+                }
             }
             if ($sessionDigest !== null) {
                 $deleteSession = $db->prepare('DELETE FROM web_sessions WHERE session_id=?');

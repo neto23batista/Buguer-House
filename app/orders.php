@@ -79,7 +79,7 @@ function placeOrder(
         $placeholders = implode(', ', array_fill(0, count($rawQuantities), '?'));
         $productsQuery = $db->prepare(
             "SELECT id, name, price_cents FROM products
-             WHERE id IN ({$placeholders}) AND is_active = 1 ORDER BY id FOR SHARE",
+             WHERE id IN ({$placeholders}) AND is_active = 1 ORDER BY id FOR UPDATE",
         );
         $productsQuery->execute(array_keys($rawQuantities));
         $products = [];

@@ -90,6 +90,16 @@ function migrationStatements(string $sql): array
     return $statements;
 }
 
+/** TiDB does not allow UTC_TIMESTAMP() expressions in defaults; the connection is already UTC. */
+function migrationSqlForServer(string $statement, string $serverVersion): string
+{
+    if (stripos($serverVersion, 'TiDB') === false
+        || !preg_match('/\A\s*(?:CREATE|ALTER)\s+TABLE\b/i', $statement)) {
+        return $statement;
+    }
+    return preg_replace('/\bDEFAULT\s*\(\s*UTC_TIMESTAMP\s*\(\s*\)\s*\)/i', 'DEFAULT CURRENT_TIMESTAMP', $statement);
+}
+
 /** @return array{applied:list<string>, skipped:list<string>} */
 function runMigrations(PDO $db, ?callable $log = null): array
 {
@@ -100,6 +110,7 @@ function runMigrations(PDO $db, ?callable $log = null): array
     if (!is_string($database) || $database === '') {
         throw new RuntimeException('Selecione um banco existente na conexão antes de migrar.');
     }
+    $serverVersion = (string) $db->getAttribute(PDO::ATTR_SERVER_VERSION);
     $lockName = 'burger-house:migrate:' . substr(hash('sha256', $database), 0, 40);
     $lock = $db->prepare('SELECT GET_LOCK(?, 15)');
     $lock->execute([$lockName]);
@@ -109,13 +120,13 @@ function runMigrations(PDO $db, ?callable $log = null): array
 
     $result = ['applied' => [], 'skipped' => []];
     try {
-        $db->exec(
+        $db->exec(migrationSqlForServer(
             'CREATE TABLE IF NOT EXISTS schema_migrations (
                 migration VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
                 checksum CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                 applied_at DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP())
-             ) ENGINE=InnoDB',
-        );
+             ) ENGINE=InnoDB', $serverVersion,
+        ));
         $applied = $db->query('SELECT migration, checksum FROM schema_migrations')->fetchAll(PDO::FETCH_KEY_PAIR);
         $insert = $db->prepare('INSERT INTO schema_migrations (migration, checksum) VALUES (?, ?)');
         $pending = [];
@@ -138,7 +149,7 @@ function runMigrations(PDO $db, ?callable $log = null): array
         foreach ($pending as $migration => $details) {
             // MySQL DDL commits implicitly. Each file must be safe to resume after partial failure.
             foreach ($details['statements'] as $statement) {
-                $db->exec($statement);
+                $db->exec(migrationSqlForServer($statement, $serverVersion));
             }
             $insert->execute([$migration, $details['checksum']]);
             $result['applied'][] = $migration;

@@ -28,7 +28,8 @@ function storePickupAddress(string $address): string
 function loadStore(PDO $db, bool $lock = false): array
 {
     $sql = 'SELECT pickup_address, prep_minutes, paused, schedule, exceptions FROM store_settings WHERE id = 1';
-    $row = $db->query($sql . ($lock ? ' FOR SHARE' : ''))->fetch(PDO::FETCH_ASSOC);
+    // Exclusive locking also works on TiDB; checkouts briefly serialize on this store row.
+    $row = $db->query($sql . ($lock ? ' FOR UPDATE' : ''))->fetch(PDO::FETCH_ASSOC);
     if ($row === false) {
         throw new PDOException('Configurações da loja ausentes.');
     }

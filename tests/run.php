@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$suites = ['database.php', 'cart.php', 'store.php', 'session.php'];
+$suites = ['database.php', 'migrations.php', 'cart.php', 'store.php', 'session.php'];
 $failures = 0;
 foreach ($suites as $suite) {
     $path = __DIR__ . '/' . $suite;

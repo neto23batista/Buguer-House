@@ -40,7 +40,7 @@ Se não houver PHP instalado, substitua `php` por `docker compose run --rm -T --
 
 ## Executar sem Docker
 
-Requisitos: PHP 8.1 ou superior com `pdo_mysql`, MySQL 8.0.22 ou superior e um banco previamente provisionado. Para desenvolvimento local, crie o banco com um usuário administrativo:
+Requisitos: PHP 8.1 ou superior com `pdo_mysql`, MySQL 8.0.22 ou superior (ou TiDB, conforme seção abaixo) e um banco previamente provisionado. Para desenvolvimento local, crie o banco com um usuário administrativo:
 
 ```sql
 CREATE DATABASE burger_house CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -73,6 +73,16 @@ O comando seleciona o banco de `DB_NAME`, que já deve existir. Não cria banco 
 `schema_migrations` registra versão, checksum e data; um advisory lock do MySQL impede dois migradores simultâneos. Executar novamente não reaplica versões registradas. O comando recusa arquivos históricos cujo checksum mudou; crie nova migração e acrescente-a ao manifesto de `bin/migrate.php`. O checksum normaliza quebras de linha Windows/Linux. Como DDL do MySQL confirma implicitamente, cada arquivo deve permitir nova execução após falha parcial. Faça backup antes de atualizar uma instalação com dados.
 
 Os SQLs usam o banco da conexão. `report-indexes.sql` verifica `INFORMATION_SCHEMA` antes de criar índices, inclusive em tabelas antigas. O servidor web não aplica migrações: execute-as antes de direcionar tráfego à nova versão.
+
+## TiDB Cloud Starter
+
+TiDB Cloud Starter no modo compatível com MySQL pode ser usado como banco externo. A suíte de integração passou localmente com **TiDB v8.5.5 e MySQL 8.4**, incluindo migrações, confirmação concorrente de pedidos e sessões compartilhadas.
+
+Configure `DB_HOST`, `DB_PORT`, `DB_USER` e `DB_PASSWORD` com os dados do diálogo **Connect** do provedor. `DB_NAME` deve apontar para um banco que já exista; o migrador cria as tabelas nesse banco. Ative `DB_SSL_REQUIRED=1` e use as CAs do sistema disponíveis na imagem ou configure `DB_SSL_CA`/`DB_SSL_CA_BASE64` com a CA indicada pelo provedor. O endpoint público exige [conexão TLS verificada](https://docs.pingcap.com/tidbcloud/secure-connections-to-serverless-clusters/).
+
+O migrador detecta TiDB e adapta automaticamente `DEFAULT (UTC_TIMESTAMP())` para `DEFAULT CURRENT_TIMESTAMP`; a conexão permanece em UTC. Os arquivos históricos e seus checksums ficam intactos. O checkout usa `FOR UPDATE` nos produtos e nas configurações da loja, compatível com ambos os bancos; os pedidos são brevemente serializados pelo registro de configurações.
+
+Para manter a instância gratuita, deixe **Monthly Spending Limit em US$ 0**, conforme a [documentação oficial de criação do Starter](https://docs.pingcap.com/tidbcloud/create-tidb-cluster-serverless/?plan=starter). Ao atingir a cota gratuita, novas conexões podem ser recusadas e conexões existentes sofrem restrições; confira as [cotas e o limite de gastos](https://docs.pingcap.com/tidbcloud/manage-serverless-spend-limit/).
 
 ## Vercel com container
 
@@ -183,7 +193,7 @@ PHP e Node precisam estar disponíveis:
 php tests/run.php
 ```
 
-O comando executa configuração/TLS, carrinho, horários, sessões e interações JavaScript. Integração MySQL é opcional localmente e obrigatória no CI. No PowerShell:
+O comando executa configuração/TLS, adaptação de migrações para TiDB, carrinho, horários, sessões e interações JavaScript. Integração com o banco é opcional localmente e obrigatória no CI. No PowerShell:
 
 ```powershell
 $env:DB_TEST_DSN = 'mysql:host=127.0.0.1;port=3307;dbname=burger_house_test;charset=utf8mb4'
