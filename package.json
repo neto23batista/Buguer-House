@@ -1,0 +1,10 @@
+{
+  "name": "burger-house-checks",
+  "private": true,
+  "scripts": {
+    "test:e2e": "node tests/browser/run.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}

@@ -6,6 +6,9 @@
 /node_modules/
 /backups/
 /coverage/
+/test-results/
+/playwright-report/
+/runtime-security.sarif
 *.log
 *.sql.gz
 *.pem

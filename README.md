@@ -123,17 +123,36 @@ A conta de migração precisa criar/alterar tabelas e índices e ler/gravar os d
 - `store_settings`: `SELECT` e `UPDATE(pickup_address, prep_minutes, paused, schedule, exceptions)`.
 - `web_sessions`, `admin_login_attempts` e `order_rate_limits`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
 
-A conta web não precisa de acesso a `schema_migrations`, `CREATE`, `ALTER` ou `DROP`. Configure usuário e origem permitida no provedor. O Compose usa uma conta com permissões no banco de desenvolvimento.
+A conta web não precisa de acesso a `schema_migrations`, `mysql.user`, `CREATE`, `ALTER` ou `DROP`. Use permissões por tabela se o provedor não suportar a restrição por coluna na versão instalada. Não atribua uma role global de leitura/escrita: os privilégios das roles se somam. Confira `SHOW GRANTS` da conta efetivamente usada pelo container e mantenha a credencial do migrador fora da Vercel. Configure usuário e origem permitida no provedor. O Compose usa uma conta com permissões no banco de desenvolvimento.
 
 ## Operação
 
 O dono acessa Pedidos, Cozinha, Cardápio, Loja e Relatórios. O operador acessa Pedidos e Cozinha. O fluxo é Recebido → Em preparo → Pronto para retirada → Concluído; cancelamentos exigem motivo e geram histórico. Cozinha e confirmação atualizam a cada oito segundos com a página visível. Links privados duram três dias e exibem andamento e itens, sem nome ou telefone do cliente.
 
-O checkout aceita até 40 unidades, três pedidos por telefone e 20 por origem em 15 minutos. Preços e disponibilidade são conferidos ao confirmar; mudanças no carrinho ou endereço exigem revisão. A sessão administrativa expira após oito horas sem atividade ou 12 horas desde o login; a retenção do armazenamento é de pelo menos 12 horas.
+O checkout aceita até 40 unidades, três pedidos por telefone e 20 por origem em 15 minutos. Preço, composição, nome e apresentação dos produtos são conferidos ao confirmar; mudanças relevantes no produto, carrinho ou endereço exigem revisão. A sessão administrativa expira após oito horas sem atividade ou 12 horas desde o login; a retenção do armazenamento é de pelo menos 12 horas. Perder a sessão do carrinho mantém um aviso com recarga antes de novos envios.
+
+O login bloqueia a origem após cinco falhas em cinco minutos. Falhas distribuídas para a mesma conta acrescentam atraso progressivo e limitado, depois de liberar os locks; não bloqueiam uma senha correta de outra origem. Isso preserva a disponibilidade do dono sem dispensar a proteção por origem. Na Vercel, o IP vem do `X-Forwarded-For` sobrescrito pela plataforma, somente quando o ambiente de execução tem `VERCEL=1`; fora dela, vem do servidor configurado com proxies confiáveis.
 
 Relatórios usam a **data de criação** do pedido para quantidades, valor concluído, ticket médio, mais vendidos e cancelamentos. Não conciliam receita por data de pagamento. As fotos são arquivos de `public/assets/img/`; inclua novas imagens no projeto e faça novo deploy para aparecerem no seletor do painel.
 
+As consultas do relatório compartilham um snapshot em leitura consistente. A fila e os pedidos recentes são ordenados por data, com ID para desempate, inclusive em TiDB com múltiplos nós. URLs de CSS e JavaScript carregam uma versão derivada do conteúdo, evitando misturar assets antigos com uma página nova.
+
 Na implantação, mantenha raiz web em `public/`, HTTPS no domínio e omita query strings de `checkout.php` nos logs de acesso: elas podem conter links privados. Proteja logs e backups. Expirar um link ou uma sessão não exclui o pedido; defina retenção e anonimização de nomes, telefones e observações conforme a operação.
+
+## Limpeza programada
+
+O armazenamento MySQL configura coleta de sessões com probabilidade de 1/100 e lotes de até 500 registros expirados. A manutenção diária complementa essa coleta e limpa também os limites vencidos de login e pedidos. `vercel.json` agenda o endpoint interno diariamente, entre 03h e 03h59 no horário de Brasília no plano Hobby. Defina `CRON_SECRET` como um segredo aleatório de pelo menos 32 caracteres no ambiente de produção; o endpoint exige `Authorization: Bearer ...` e não cria uma sessão de navegador. Nunca coloque o segredo na URL ou no Git.
+
+Também é possível executar a rotina por CLI com a conta restrita da aplicação:
+
+```sh
+php bin/maintenance.php --dry-run
+php bin/maintenance.php
+```
+
+Os padrões são `MAINTENANCE_BATCH_SIZE=500`, `MAINTENANCE_MAX_BATCHES=20` e `MAINTENANCE_MAX_SECONDS=10`. Uma trava impede duas execuções simultâneas e o orçamento limita o trabalho por chamada. O resultado informa contagens, sem dados dos clientes.
+
+`ORDER_PII_RETENTION_DAYS=0` deixa a anonimização **desativada**. Depois de definir uma política adequada, um valor positivo anonimiza apenas nome, telefone e observações de pedidos concluídos/cancelados cujo início e última alteração são anteriores ao prazo; preserva itens, valores e histórico. Em instalações com grants por coluna, essa opção exige também `UPDATE(customer_name, customer_phone, notes)` na conta de manutenção; prefira uma credencial separada para executar o CLI se a conta web não deve ter esse acesso. A limpeza padrão de sessões e limites não precisa dessas colunas. Confira primeiro com `--dry-run` e mantenha backup. Nenhum pedido ativo é anonimizado.
 
 ## Backup e restauração
 
@@ -193,7 +212,7 @@ PHP e Node precisam estar disponíveis:
 php tests/run.php
 ```
 
-O comando executa configuração/TLS, adaptação de migrações para TiDB, carrinho, horários, sessões e interações JavaScript. Integração com o banco é opcional localmente e obrigatória no CI. No PowerShell:
+O comando executa configuração/TLS, origem do cliente, adaptação de migrações para TiDB, carrinho, horários, sessões e interações JavaScript. Com banco dedicado, inclui regressões de alteração do produto, snapshot de relatórios, ordenação, login distribuído e manutenção. Integração com o banco é opcional localmente e obrigatória no CI. No PowerShell:
 
 ```powershell
 $env:DB_TEST_DSN = 'mysql:host=127.0.0.1;port=3307;dbname=burger_house_test;charset=utf8mb4'
@@ -205,7 +224,17 @@ php tests/run.php
 
 Crie previamente banco **dedicado** terminado em `_test` ou iniciado por `bh_test_`; outro nome é recusado antes de alterações. A suíte aplica migrações, cria fixtures temporárias, restaura a loja e remove seus dados. Não use o banco da loja. Também aceita `DB_*` com `REQUIRE_DB_TESTS=1`. Conexão obrigatória que falha encerra o processo com erro.
 
-Integração cobre persistência, preço/endereço alterados, loja fechada/pausada, limites, links privados, login/perfis, sessões compartilhadas, relatórios e corridas reais de confirmação e status com dois processos PHP. O CI usa MySQL 8.4, PHP 8.4 e Node 22, verifica sintaxe e valida imagem e Caddy.
+Integração cobre persistência, preço/endereço alterados, loja fechada/pausada, limites, links privados, login/perfis, sessões compartilhadas, relatórios e corridas reais de confirmação e status com dois processos PHP. O CI usa MySQL 8.4, TiDB 8.5.5, PHP 8.4 e Node 22, verifica sintaxe, valida imagem/Caddy, publica relatório de vulnerabilidades para triagem e executa as regressões de navegador.
+
+Com o mesmo banco de teste local configurado, execute os testes reais de navegador:
+
+```sh
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+O runner só aceita banco local dedicado, inicia e encerra um servidor PHP isolado e restaura as fixtures. Chromium desktop e celular verificam modal/foco/teclado, perda de sessão, desconexão sem repetição de POST e feedback/envio único do checkout. O envio final é interceptado para não criar compras. PHP de produção não depende de Node ou Playwright.
 
 Teste manual: configure endereço e horários e despause a loja. Adicione dois House Smash e uma Fritas da Casa ao catálogo inicial: total R$ 72,70. Confirme, acompanhe a cozinha e marque como pronto e concluído. Abra o link privado em outro navegador. Os preços de demonstração podem ter sido editados pelo dono.
 

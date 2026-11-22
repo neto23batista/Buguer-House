@@ -78,7 +78,7 @@ function harness(initialCount = 0) {
     };
     vm.runInNewContext(source, context);
     return {
-        calls, navigations, forms, recovery, cartContent, checkout, limit,
+        calls, navigations, forms, recovery, cartContent, checkout, limit, status,
         submit(index = 0) { listeners.get('submit')({ target: forms[index], preventDefault() {} }); },
         checkoutClick(options = {}) { clickHandler({ target: { closest: () => checkout }, preventDefault() {}, ...options }); },
         timeout() {
@@ -87,13 +87,20 @@ function harness(initialCount = 0) {
             timers.delete(timer[0]);
             timer[1].callback();
         },
+        announce() {
+            const timer = [...timers].find(([, entry]) => entry.delay === 50);
+            assert.ok(timer, 'O aviso precisa ser agendado.');
+            timers.delete(timer[0]);
+            timer[1].callback();
+        },
+        hasDismissTimer: () => [...timers.values()].some((entry) => entry.delay === 3500),
         flush: async () => { for (let step = 0; step < 30; step++) await Promise.resolve(); },
     };
 }
 
 function response(count, ok = true) {
     return {
-        ok,
+        ok, status: ok ? 200 : 422,
         json: async () => ({
             cart: { count, totalCents: count * 2890 },
             cartHtml: `<p data-cart-limit="40" data-cart-count-total="${count}"></p>`,
@@ -185,6 +192,29 @@ test('falha de rede bloqueia alterações e não tenta repetir o POST', async ()
     assert.equal(app.recovery.hidden, false);
 });
 
+test('sessão perdida mantém recuperação visível e bloqueia novos POSTs até recarregar', async () => {
+    for (const forbidden of [
+        { ...response(0, false), status: 403 },
+        { status: 403, ok: false, json: async () => { throw new SyntaxError('JSON inválido'); } },
+    ]) {
+        const app = harness(1);
+        app.submit(); app.submit(); app.checkoutClick();
+        await app.flush();
+        app.calls[0].resolve(forbidden);
+        await app.flush();
+        app.announce();
+        assert.equal(app.recovery.hidden, false);
+        assert.equal(app.forms[0].button.disabled, true);
+        assert.equal(app.forms[1].button.disabled, true);
+        assert.match(app.status.textContent, /Sua sessão mudou/);
+        assert.equal(app.hasDismissTimer(), false, 'A instrução de recarga deve continuar visível.');
+        app.submit(); app.checkoutClick();
+        await app.flush();
+        assert.equal(app.calls.length, 1);
+        assert.equal(app.navigations.length, 0);
+    }
+});
+
 test('JSON inválido ou resposta incompleta exige conferência antes de navegar', async () => {
     for (const invalidResponse of [
         { ok: false, json: async () => { throw new SyntaxError('JSON inválido'); } },
@@ -262,4 +292,49 @@ test('input name=action não sobrescreve a URL de atualização da cozinha', asy
     assert.equal(calls[0].options.method, 'POST');
     calls[0].resolve({ status: 200, ok: true, json: async () => ({ message: 'Status atualizado.' }) });
     await submission;
+});
+
+function checkoutHarness(initiallyDisabled = false) {
+    const handlers = new Map();
+    const form = { ...element(), addEventListener: (name, handler) => handlers.set(name, handler) };
+    const button = { ...element(), innerHTML: 'Enviar pedido <span>→</span>', disabled: initiallyDisabled };
+    const progress = element();
+    const context = {
+        document: { querySelector: (selector) => ({
+            '[data-checkout-form]': form,
+            '[data-submit-order]': button,
+            '[data-checkout-progress]': progress,
+        }[selector]) },
+        window: { addEventListener: (name, handler) => handlers.set(name, handler) },
+    };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/assets/js/checkout.js'), 'utf8'), context);
+    return { form, button, progress, handlers };
+}
+
+test('checkout informa envio e impede um segundo submit sem trocar o token do POST', () => {
+    const app = checkoutHarness();
+    let prevented = 0;
+    app.handlers.get('submit')({ preventDefault() { prevented++; } });
+    assert.equal(prevented, 0, 'O primeiro envio deve continuar como POST nativo.');
+    assert.equal(app.button.disabled, true);
+    assert.equal(app.form.getAttribute('aria-busy'), 'true');
+    assert.equal(app.button.textContent, 'Enviando pedido…');
+    assert.equal(app.progress.hidden, false);
+    app.handlers.get('submit')({ preventDefault() { prevented++; } });
+    assert.equal(prevented, 1);
+});
+
+test('voltar à página restaura o checkout e preserva a indisponibilidade original da loja', () => {
+    for (const initiallyDisabled of [false, true]) {
+        const app = checkoutHarness(initiallyDisabled);
+        app.handlers.get('submit')({ preventDefault() {} });
+        app.handlers.get('pageshow')();
+        assert.equal(app.button.disabled, initiallyDisabled);
+        assert.equal(app.button.innerHTML, 'Enviar pedido <span>→</span>');
+        assert.equal(app.form.hasAttribute('aria-busy'), false);
+        assert.equal(app.progress.hidden, true);
+        let prevented = false;
+        app.handlers.get('submit')({ preventDefault() { prevented = true; } });
+        assert.equal(prevented, false);
+    }
 });

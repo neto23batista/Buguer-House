@@ -20,6 +20,10 @@ function startBurgerSession(): void
         ini_set('session.gc_maxlifetime', (string) $ttl);
         if ($driver === 'mysql') {
             require_once __DIR__ . '/mysql-session.php';
+            // Up to one new session per request; 1/100 * 500 gives spare cleanup capacity.
+            // Scheduled maintenance also drains expired rows when there is little traffic.
+            ini_set('session.gc_probability', '1');
+            ini_set('session.gc_divisor', '100');
             session_set_save_handler(new MySqlSessionHandler(static fn (): PDO => databaseConnection(), $ttl), true);
         }
         if (!session_start([

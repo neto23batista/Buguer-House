@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/limits.php';
+require_once __DIR__ . '/catalog.php';
 
 function availableQuantities(array $quantities, array $products): array
 {
@@ -78,9 +79,17 @@ function cartChanges(array $previous, array $quantities, array $products, array 
         $removed[] = $snapshot[$id]['name'] ?? 'Item removido';
     }
     $repriced = [];
+    $updated = [];
     foreach ($quantities as $id => $quantity) {
-        if (isset($snapshot[$id]) && $snapshot[$id]['price_cents'] !== $products[$id]['price_cents']) {
+        if (!isset($snapshot[$id])) {
+            continue;
+        }
+        if ($snapshot[$id]['price_cents'] !== $products[$id]['price_cents']) {
             $repriced[] = $products[$id]['name'];
+        } elseif (isset($snapshot[$id]['catalog_signature'])
+            ? !hash_equals($snapshot[$id]['catalog_signature'], productCatalogSignature($products[$id]))
+            : $snapshot[$id]['name'] !== $products[$id]['name']) {
+            $updated[] = $products[$id]['name'];
         }
     }
 
@@ -91,7 +100,10 @@ function cartChanges(array $previous, array $quantities, array $products, array 
     if ($repriced) {
         $notices[] = 'Preços atualizados: ' . implode(', ', $repriced) . '.';
     }
-    return $notices ? implode(' ', $notices) . ' Confira o novo total antes de enviar o pedido.' : '';
+    if ($updated) {
+        $notices[] = 'Produtos atualizados: ' . implode(', ', $updated) . '.';
+    }
+    return $notices ? implode(' ', $notices) . ' Confira os itens e o total antes de enviar o pedido.' : '';
 }
 
 function rememberCart(array $quantities, array $products): void
@@ -99,7 +111,10 @@ function rememberCart(array $quantities, array $products): void
     $_SESSION['cart'] = $quantities;
     $snapshot = [];
     foreach ($quantities as $id => $quantity) {
-        $snapshot[$id] = ['name' => $products[$id]['name'], 'price_cents' => $products[$id]['price_cents']];
+        $snapshot[$id] = [
+            'name' => $products[$id]['name'], 'price_cents' => $products[$id]['price_cents'],
+            'catalog_signature' => productCatalogSignature($products[$id]),
+        ];
     }
     $_SESSION['cart_snapshot'] = $snapshot;
 }

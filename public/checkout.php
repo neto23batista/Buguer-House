@@ -7,6 +7,7 @@ require __DIR__ . '/../app/cart.php';
 require __DIR__ . '/../app/session.php';
 require __DIR__ . '/../app/orders.php';
 require __DIR__ . '/../app/presentation.php';
+require_once __DIR__ . '/../app/assets.php';
 
 startBurgerSession();
 header('Cache-Control: no-store');
@@ -134,7 +135,7 @@ try {
                 try {
                     $order = placeOrder(
                         $db, $sentToken, $details, $rawCart, $fingerprint,
-                        $previousDraft['pickup_address'], $_SERVER['REMOTE_ADDR'] ?? null,
+                        $previousDraft['pickup_address'], clientAddress(),
                     );
                     $receipts[$sentToken] = $order['public_code'];
                     $_SESSION['order_receipts'] = array_slice($receipts, -20, null, true);
@@ -206,10 +207,11 @@ if ($polling) {
     <meta name="robots" content="noindex, nofollow">
     <title><?= $title ?> | Burger House</title>
     <?php renderPresentationHead($title . ' | Burger House', ''); ?>
-    <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="stylesheet" href="assets/css/customer.css">
-    <link rel="stylesheet" href="assets/css/checkout.css">
-    <?php if ($order): ?><script src="assets/js/tracking.js" defer></script><?php endif; ?>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css')) ?>">
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/customer.css')) ?>">
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/checkout.css')) ?>">
+    <?php if ($order): ?><script src="<?= escape(assetUrl('assets/js/tracking.js')) ?>" defer></script><?php endif; ?>
+    <?php if ($draft && !$isReceipt): ?><script src="<?= escape(assetUrl('assets/js/checkout.js')) ?>" defer></script><?php endif; ?>
 </head>
 <body class="customer checkout-page">
     <header class="site-header">
@@ -292,7 +294,7 @@ if ($polling) {
                 <p class="checkout-alert" role="status"><?= escape($availability['message']) ?></p>
             <?php endif; ?>
             <?php if ($cartReview !== ''): ?><p class="checkout-alert" role="status"><?= escape($cartReview) ?></p><?php endif; ?>
-            <form class="checkout-grid" method="post" action="checkout.php">
+            <form class="checkout-grid" method="post" action="checkout.php" data-checkout-form>
                 <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
                 <input type="hidden" name="checkout_token" value="<?= escape($draft['token']) ?>">
                 <section class="checkout-card customer-card" aria-labelledby="customer-title">
@@ -332,7 +334,8 @@ if ($polling) {
                         <?php endif; ?>
                     </dl>
                     <div class="summary-total"><span>Total</span><strong><?= price($cart['totalCents']) ?></strong></div>
-                    <button class="primary-button submit-order" type="submit" <?= $availability['accepting'] ? '' : 'disabled' ?>><?= $isDemo ? 'Enviar pedido de teste' : 'Enviar pedido' ?> <span aria-hidden="true">→</span></button>
+                    <button class="primary-button submit-order" type="submit" data-submit-order <?= $availability['accepting'] ? '' : 'disabled' ?>><?= $isDemo ? 'Enviar pedido de teste' : 'Enviar pedido' ?> <span aria-hidden="true">→</span></button>
+                    <p role="status" data-checkout-progress hidden></p>
                 </aside>
             </form>
         <?php endif; ?>

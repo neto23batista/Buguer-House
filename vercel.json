@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/internal/maintenance.php",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}

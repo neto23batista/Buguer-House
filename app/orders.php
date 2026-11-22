@@ -35,7 +35,7 @@ function cartFingerprint(array $cart): string
     $items = [];
     foreach ($cart['items'] as $item) {
         $product = $item['product'];
-        $items[$product['id']] = [$item['quantity'], $product['price_cents']];
+        $items[$product['id']] = [$item['quantity'], productCatalogSignature($product)];
     }
     ksort($items, SORT_NUMERIC);
 
@@ -75,10 +75,10 @@ function placeOrder(
             throw new DomainException('O endereço de retirada mudou. Confira o novo endereço antes de confirmar.');
         }
 
-        // Preserve the price and availability of every requested product until the order is saved.
+        // Preserve the reviewed product and its availability until the order is saved.
         $placeholders = implode(', ', array_fill(0, count($rawQuantities), '?'));
         $productsQuery = $db->prepare(
-            "SELECT id, name, price_cents FROM products
+            'SELECT ' . CATALOG_PRODUCT_FIELDS . " FROM products
              WHERE id IN ({$placeholders}) AND is_active = 1 ORDER BY id FOR UPDATE",
         );
         $productsQuery->execute(array_keys($rawQuantities));
@@ -201,7 +201,7 @@ function listOrderItems(PDO $db, int $orderId): array
 function listOrders(PDO $db, ?string $status = null, int $limit = 50, int $offset = 0): array
 {
     $filter = $status === null ? '' : ' WHERE status = :status';
-    $query = $db->prepare('SELECT ' . ORDER_FIELDS . ' FROM orders' . $filter . ' ORDER BY id DESC LIMIT :limit OFFSET :offset');
+    $query = $db->prepare('SELECT ' . ORDER_FIELDS . ' FROM orders' . $filter . ' ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
     if ($status !== null) {
         $query->bindValue(':status', $status);
     }

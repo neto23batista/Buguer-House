@@ -1,4 +1,4 @@
-FROM dunglas/frankenphp:1-php8.4-alpine AS runtime
+FROM dunglas/frankenphp:1-php8.4-alpine@sha256:f81693fa548684eb12964eeab78d86325b75c5cd91289c09ffc4dd4404a641e5 AS runtime
 
 WORKDIR /app
 RUN install-php-extensions pdo_mysql \

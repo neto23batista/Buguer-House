@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../app/admin-auth.php';
 require_once __DIR__ . '/../../app/kitchen.php';
+require_once __DIR__ . '/../../app/assets.php';
 
 $isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
 $isFeed = !$isPost && ($_GET['atualizacao'] ?? null) === '1';
@@ -96,10 +97,10 @@ if ($isFeed) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#fbf7ed">
     <title>Cozinha — Burger House</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="stylesheet" href="../assets/css/admin.css">
-    <link rel="stylesheet" href="../assets/css/kitchen.css">
-    <script src="../assets/js/kitchen.js" defer></script>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css', '../')) ?>">
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/admin.css', '../')) ?>">
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/kitchen.css', '../')) ?>">
+    <script src="<?= escape(assetUrl('assets/js/kitchen.js', '../')) ?>" defer></script>
 </head>
 <body class="admin-body">
     <a class="skip-link" href="#kitchen-main">Pular para o conteúdo</a>

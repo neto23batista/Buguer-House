@@ -9,6 +9,7 @@ let cartRequest = Promise.resolve();
 let cartGeneration = 0;
 let pendingCartChanges = 0;
 let cartNeedsReview = false;
+let cartSessionChanged = false;
 const cartRequestTimeout = 10000;
 let announcementTimer;
 let dismissAnnouncementTimer;
@@ -168,7 +169,10 @@ function updateCartState() {
 }
 
 function requestCartReview() {
-    announce('A última alteração não foi confirmada. Abra o carrinho e use “Recarregar e conferir carrinho” antes de continuar.', true, true);
+    const message = cartSessionChanged
+        ? 'Sua sessão mudou. Abra o carrinho e use “Recarregar e conferir carrinho” para continuar.'
+        : 'A última alteração não foi confirmada. Abra o carrinho e use “Recarregar e conferir carrinho” antes de continuar.';
+    announce(message, true, true);
 }
 
 async function updateCart(url, body) {
@@ -189,6 +193,7 @@ async function updateCart(url, body) {
                 body,
                 signal: controller.signal,
             });
+            if (response.status === 403) cartSessionChanged = true;
             return { response, payload: await response.json() };
         })();
         const { response, payload } = await Promise.race([request, timeout]);
@@ -197,6 +202,7 @@ async function updateCart(url, body) {
             && Number.isSafeInteger(payload.cart?.totalCents) && payload.cart.totalCents >= 0;
         if (!reconciled) throw new Error('O carrinho não foi confirmado.');
         renderCart(payload);
+        if (cartSessionChanged) throw new Error('A sessão do carrinho mudou.');
         announce(payload.message || (response.ok ? 'Carrinho atualizado.' : 'Não foi possível atualizar o carrinho.'), !response.ok);
         return { successful: response.ok, reconciled: true };
     } catch {

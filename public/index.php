@@ -7,6 +7,7 @@ require __DIR__ . '/../app/cart.php';
 require __DIR__ . '/../app/session.php';
 require __DIR__ . '/../app/store.php';
 require __DIR__ . '/../app/presentation.php';
+require_once __DIR__ . '/../app/assets.php';
 
 startBurgerSession();
 
@@ -116,9 +117,9 @@ $description = $isDemo
     <meta name="theme-color" content="#fbf7ed">
     <title>Burger House — Smash Burgers</title>
     <?php renderPresentationHead('Burger House — Smash Burgers', $description, true); ?>
-    <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="stylesheet" href="assets/css/customer.css">
-    <script src="assets/js/app.js" defer></script>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css')) ?>">
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/customer.css')) ?>">
+    <script src="<?= escape(assetUrl('assets/js/app.js')) ?>" defer></script>
 </head>
 <body class="customer storefront" id="inicio">
     <a class="skip-link" href="#cardapio">Pular para o cardápio</a>
@@ -144,7 +145,13 @@ $description = $isDemo
         <?php if ($isDemo): ?>
             <aside class="shell demo-notice" aria-label="Demonstração do projeto">
                 <strong>Projeto de portfólio</strong>
-                <p>Esta é uma demonstração da Burger House. Explore o cardápio e teste o pedido com dados fictícios. Nenhuma compra real será realizada.</p>
+                <p>Esta é uma demonstração da Burger House.
+                    <?php if ($storeStatus['accepting'] ?? false): ?>
+                        Explore o cardápio e teste o pedido com dados fictícios.
+                    <?php else: ?>
+                        Explore o cardápio e monte seu carrinho. O envio de pedidos de teste está indisponível no momento.
+                    <?php endif; ?>
+                    Nenhuma compra real será realizada.</p>
             </aside>
         <?php endif; ?>
         <dialog id="carrinho" class="cart-dialog<?= $cartPage ? ' is-page' : '' ?>" aria-labelledby="cart-title" <?= $cartPage ? 'open' : '' ?>>

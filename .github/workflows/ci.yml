@@ -34,6 +34,19 @@ jobs:
         run: docker compose --env-file .env.example config --quiet
       - name: Build production runtime
         run: docker build -t burger-house:ci .
+      - name: Report runtime vulnerability alerts
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: burger-house:ci
+          format: sarif
+          output: runtime-security.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+      - name: Preserve vulnerability report for triage
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-security
+          path: runtime-security.sarif
       - name: Validate web server configuration
         run: docker run --rm burger-house:ci frankenphp validate --config /etc/caddy/Caddyfile
       - name: Check PHP syntax
@@ -46,5 +59,60 @@ jobs:
           DB_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=burger_house_test;charset=utf8mb4
           DB_TEST_USER: root
           DB_TEST_PASSWORD: integration-only-password
+          REQUIRE_DB_TESTS: '1'
+        run: php tests/run.php
+      - name: Install browser test dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run desktop and mobile browser regressions
+        env:
+          DB_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=burger_house_test;charset=utf8mb4
+          DB_TEST_USER: root
+          DB_TEST_PASSWORD: integration-only-password
+        run: npm run test:e2e
+      - name: Preserve failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: test-results/
+          if-no-files-found: ignore
+
+  tidb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Start isolated TiDB
+        run: docker run -d --name tidb-test -p 127.0.0.1:4000:4000 pingcap/tidb:v8.5.5 --store=unistore --path=/tmp/burger-house-tests -L error
+      - name: Prepare dedicated TiDB test database
+        run: |
+          php <<'PHP'
+          <?php
+          for ($attempt = 0; $attempt < 60; $attempt++) {
+              try {
+                  $db = new PDO('mysql:host=127.0.0.1;port=4000;charset=utf8mb4', 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                  $db->exec('CREATE DATABASE IF NOT EXISTS burger_house_test');
+                  exit(0);
+              } catch (PDOException $exception) {
+                  if ($attempt === 59) { throw $exception; }
+                  usleep(500000);
+              }
+          }
+          PHP
+      - name: Run TiDB integration and security regressions
+        env:
+          APP_ENV: test
+          DB_TEST_DSN: mysql:host=127.0.0.1;port=4000;dbname=burger_house_test;charset=utf8mb4
+          DB_TEST_USER: root
+          DB_TEST_PASSWORD: ''
           REQUIRE_DB_TESTS: '1'
         run: php tests/run.php

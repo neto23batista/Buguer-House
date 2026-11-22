@@ -8,6 +8,7 @@ require_once __DIR__ . '/../../app/orders.php';
 require_once __DIR__ . '/../../app/admin-catalog.php';
 require_once __DIR__ . '/../../app/kitchen.php';
 require_once __DIR__ . '/../../app/reports.php';
+require_once __DIR__ . '/../../app/assets.php';
 
 const ADMIN_ORDER_PAGE_SIZE = 20;
 
@@ -278,9 +279,9 @@ $statusActions = [
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#fbf7ed">
     <title><?= $isLoggedIn ? escape($sectionTitle) : 'Painel administrativo' ?> — Burger House</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="stylesheet" href="../assets/css/admin.css">
-    <?php if ($isStore): ?><link rel="stylesheet" href="../assets/css/store.css"><?php endif; ?>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css', '../')) ?>">
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/admin.css', '../')) ?>">
+    <?php if ($isStore): ?><link rel="stylesheet" href="<?= escape(assetUrl('assets/css/store.css', '../')) ?>"><?php endif; ?>
 </head>
 <body class="admin-body">
     <a class="skip-link" href="#admin-main">Pular para o conteúdo</a>

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$suites = ['database.php', 'migrations.php', 'cart.php', 'store.php', 'session.php'];
+$suites = ['database.php', 'client-address.php', 'migrations.php', 'cart.php', 'store.php', 'session.php'];
 $failures = 0;
 foreach ($suites as $suite) {
     $path = __DIR__ . '/' . $suite;
@@ -23,9 +23,11 @@ if (!is_resource($process) || proc_close($process) !== 0) {
 }
 $runDatabase = getenv('DB_TEST_DSN') !== false || getenv('REQUIRE_DB_TESTS') === '1';
 if ($runDatabase) {
-    $process = proc_open([PHP_BINARY, 'tests/integration.php'], [STDIN, STDOUT, STDERR], $pipes, $root);
-    if (!is_resource($process) || proc_close($process) !== 0) {
-        $failures++;
+    foreach (['integration.php', 'functional-regressions.php', 'security-regressions.php'] as $suite) {
+        $process = proc_open([PHP_BINARY, 'tests/' . $suite], [STDIN, STDOUT, STDERR], $pipes, $root);
+        if (!is_resource($process) || proc_close($process) !== 0) {
+            $failures++;
+        }
     }
 } else {
     echo 'SKIP: integração MySQL (configure DB_TEST_DSN ou REQUIRE_DB_TESTS=1).', PHP_EOL;

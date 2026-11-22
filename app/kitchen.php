@@ -57,7 +57,7 @@ function listKitchenOrders(PDO $db): array
          FROM orders
          LEFT JOIN order_items ON order_items.order_id = orders.id
          WHERE orders.status IN ('received', 'preparing', 'ready')
-         ORDER BY orders.id, order_items.product_id",
+         ORDER BY orders.created_at, orders.id, order_items.product_id",
     );
 
     $orders = [];

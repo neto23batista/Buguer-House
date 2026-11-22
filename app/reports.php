@@ -33,34 +33,51 @@ function reportDate(mixed $input, DateTimeZone $timezone): ?DateTimeImmutable
 
 function orderReport(PDO $db, array $bounds): array
 {
-    $totals = $db->prepare(
-        "SELECT COUNT(*) AS received, COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed,
-                COUNT(CASE WHEN status = 'cancelled' THEN 1 END) AS cancelled,
-                COALESCE(SUM(CASE WHEN status = 'completed' THEN total_cents END), 0) AS total
-         FROM orders WHERE created_at >= ? AND created_at < ?",
-    );
-    $totals->execute($bounds);
+    $ownsTransaction = !$db->inTransaction();
+    if ($ownsTransaction) {
+        // Apply only to this report, preserving the connection's default isolation level.
+        $db->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        $db->beginTransaction();
+    }
+    try {
+        $totals = $db->prepare(
+            "SELECT COUNT(*) AS received, COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed,
+                    COUNT(CASE WHEN status = 'cancelled' THEN 1 END) AS cancelled,
+                    COALESCE(SUM(CASE WHEN status = 'completed' THEN total_cents END), 0) AS total
+             FROM orders WHERE created_at >= ? AND created_at < ?",
+        );
+        $totals->execute($bounds);
 
-    $products = $db->prepare(
-        "SELECT sales.product_id, COALESCE(products.name, snapshot.product_name) AS product_name, sales.units
-         FROM (
-             SELECT order_items.product_id, SUM(order_items.quantity) AS units, MAX(order_items.order_id) AS last_order_id
-             FROM order_items JOIN orders ON orders.id = order_items.order_id
-             WHERE orders.status = 'completed' AND orders.created_at >= ? AND orders.created_at < ?
-             GROUP BY order_items.product_id
-         ) AS sales
-         LEFT JOIN products ON products.id = sales.product_id
-         JOIN order_items AS snapshot ON snapshot.order_id = sales.last_order_id AND snapshot.product_id = sales.product_id
-         ORDER BY sales.units DESC, product_name, sales.product_id LIMIT 8",
-    );
-    $products->execute($bounds);
+        $products = $db->prepare(
+            "SELECT sales.product_id, COALESCE(products.name, snapshot.product_name) AS product_name, sales.units
+             FROM (
+                 SELECT order_items.product_id, SUM(order_items.quantity) AS units, MAX(order_items.order_id) AS last_order_id
+                 FROM order_items JOIN orders ON orders.id = order_items.order_id
+                 WHERE orders.status = 'completed' AND orders.created_at >= ? AND orders.created_at < ?
+                 GROUP BY order_items.product_id
+             ) AS sales
+             LEFT JOIN products ON products.id = sales.product_id
+             JOIN order_items AS snapshot ON snapshot.order_id = sales.last_order_id AND snapshot.product_id = sales.product_id
+             ORDER BY sales.units DESC, product_name, sales.product_id LIMIT 8",
+        );
+        $products->execute($bounds);
 
-    $cancellations = $db->prepare(
-        "SELECT events.reason, COUNT(*) AS orders_count FROM order_status_events AS events JOIN orders ON orders.id = events.order_id
-         WHERE events.next_status = 'cancelled' AND orders.created_at >= ? AND orders.created_at < ?
-         GROUP BY events.reason ORDER BY orders_count DESC, events.reason LIMIT 8",
-    );
-    $cancellations->execute($bounds);
+        $cancellations = $db->prepare(
+            "SELECT events.reason, COUNT(*) AS orders_count FROM order_status_events AS events JOIN orders ON orders.id = events.order_id
+             WHERE events.next_status = 'cancelled' AND orders.created_at >= ? AND orders.created_at < ?
+             GROUP BY events.reason ORDER BY orders_count DESC, events.reason LIMIT 8",
+        );
+        $cancellations->execute($bounds);
 
-    return ['totals' => $totals->fetch(), 'products' => $products->fetchAll(), 'cancellations' => $cancellations->fetchAll()];
+        $report = ['totals' => $totals->fetch(), 'products' => $products->fetchAll(), 'cancellations' => $cancellations->fetchAll()];
+        if ($ownsTransaction) {
+            $db->commit();
+        }
+        return $report;
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $exception;
+    }
 }

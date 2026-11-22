@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 final class MySqlSessionHandler implements SessionHandlerInterface, SessionUpdateTimestampHandlerInterface
 {
+    public const GC_BATCH_SIZE = 500;
     private ?PDO $db = null;
     private ?string $lockedKey = null;
 
@@ -87,7 +88,9 @@ final class MySqlSessionHandler implements SessionHandlerInterface, SessionUpdat
 
     public function gc(int $max_lifetime): int|false
     {
-        return $this->connection()->exec('DELETE FROM web_sessions WHERE expires_at <= UTC_TIMESTAMP() LIMIT 500');
+        return $this->connection()->exec(
+            'DELETE FROM web_sessions WHERE expires_at <= UTC_TIMESTAMP() ORDER BY expires_at LIMIT ' . self::GC_BATCH_SIZE,
+        );
     }
 
     public function validateId(string $id): bool
