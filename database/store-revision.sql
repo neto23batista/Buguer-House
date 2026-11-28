@@ -1,0 +1,6 @@
+SET @bh_ddl = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE store_settings ADD COLUMN revision INT UNSIGNED NOT NULL DEFAULT 1', 'DO 0')
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'store_settings' AND COLUMN_NAME = 'revision');
+PREPARE bh_change FROM @bh_ddl;
+EXECUTE bh_change;
+DEALLOCATE PREPARE bh_change;

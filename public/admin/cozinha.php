@@ -28,6 +28,7 @@ if ($isPost) {
     $expected = $_POST['expected_status'] ?? null;
     $next = $_POST['next_status'] ?? null;
     $reason = $_POST['cancel_reason'] ?? '';
+    $customerReason = $_POST['customer_reason'] ?? '';
     $status = 200;
     $message = 'Status atualizado.';
 
@@ -35,13 +36,16 @@ if ($isPost) {
         $status = 403;
         $message = 'Sua sessão mudou. Recarregue a tela para tentar novamente.';
     } elseif (($_POST['action'] ?? null) !== 'change_status' || $id === false
-        || !is_string($expected) || !is_string($next) || !is_string($reason)
+        || !is_string($expected) || !is_string($next) || !is_string($reason) || !is_string($customerReason)
         || !in_array($next, orderTransitions($expected), true)) {
         $status = 422;
         $message = 'Escolha uma ação válida para este pedido.';
     } else {
         try {
-            if (!changeKitchenOrderStatus(databaseConnection(), $id, $expected, $next, $auth['user'], $reason)) {
+            if ($next === 'cancelled' && $customerReason === '') {
+                throw new DomainException('Selecione um motivo de cancelamento para o cliente.');
+            }
+            if (!changeKitchenOrderStatus(databaseConnection(), $id, $expected, $next, $auth['user'], $reason, $customerReason, is_string($_POST['payment_method'] ?? null) ? $_POST['payment_method'] : '')) {
                 $status = 409;
                 $message = 'O pedido já mudou. Confira a fila atual.';
             }
@@ -129,6 +133,8 @@ if ($isFeed) {
                 <a href="./?secao=cardapio">Cardápio</a>
                 <a href="./?secao=loja">Loja</a>
                 <a href="./?secao=relatorios">Relatórios</a>
+                <a href="./?secao=caixa">Caixa</a>
+                <a href="./?secao=equipe">Equipe</a>
             <?php endif; ?>
         </nav>
         <div class="admin-page-heading kitchen-heading">

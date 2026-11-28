@@ -28,7 +28,7 @@ try {
     $products = [];
 }
 
-if (!$isPost && $catalogAvailable) {
+if ($catalogAvailable) {
     try {
         $store = loadStore($database);
         $storeStatus = storeAvailability($store);

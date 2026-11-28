@@ -50,6 +50,7 @@ function placeOrder(
     string $expectedCart,
     string $expectedPickupAddress,
     ?string $clientAddress = null,
+    ?int $expectedPrepMinutes = null,
 ): array {
     if (!preg_match('/\A[a-f0-9]{64}\z/', $checkoutToken)) {
         throw new DomainException('A confirmação do pedido expirou. Confira seu carrinho e tente novamente.');
@@ -70,6 +71,9 @@ function placeOrder(
         $availability = storeAvailability($store);
         if (!$availability['accepting']) {
             throw new DomainException($availability['message']);
+        }
+        if ($expectedPrepMinutes !== null && $store['prep_minutes'] !== $expectedPrepMinutes) {
+            throw new DomainException('O prazo de preparo mudou. Confira a nova previsão antes de confirmar.');
         }
         if ($store['pickup_address'] !== $expectedPickupAddress) {
             throw new DomainException('O endereço de retirada mudou. Confira o novo endereço antes de confirmar.');

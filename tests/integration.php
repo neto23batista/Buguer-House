@@ -173,6 +173,8 @@ try {
     $customer = ['name' => 'Cliente de integração', 'phone' => $phone, 'notes' => 'Fixture temporária'];
     $token = bin2hex(random_bytes(32));
     $order = placeOrder($db, $token, $customer, $quantities, $fingerprint, $address);
+    testThrows(fn () => placeOrder($db, bin2hex(random_bytes(32)), $customer, $quantities, $fingerprint, $address, null, 999),
+        DomainException::class, 'mudança de prazo dentro da transação exige revisão', 'prazo');
     $duplicate = placeOrder($db, $token, $customer, $quantities, $fingerprint, $address);
     testSame($order['id'], $duplicate['id'], 'token repetido devolve o mesmo pedido');
     $quota = $db->prepare('SELECT order_count FROM order_rate_limits WHERE source_hash=?');
@@ -241,7 +243,10 @@ try {
     testAssert(!canReadOrderTracking(orderTrackingDetails($db, $order['public_code']), orderTrackingToken($token)), 'link expirado é recusado');
     testAssert(changeKitchenOrderStatus($db, $order['id'], 'received', 'preparing', 'integration-' . $suffix), 'pedido inicia preparo');
     testAssert(changeKitchenOrderStatus($db, $order['id'], 'preparing', 'ready', 'integration-' . $suffix), 'pedido fica pronto');
-    testAssert(changeKitchenOrderStatus($db, $order['id'], 'ready', 'completed', 'integration-' . $suffix), 'pedido é concluído');
+    testThrows(fn () => changeKitchenOrderStatus($db, $order['id'], 'ready', 'completed', 'integration'),
+        DomainException::class, 'retirada sem pagamento preserva o status pronto', 'forma de pagamento');
+    testAssert(changeKitchenOrderStatus($db, $order['id'], 'ready', 'completed', 'integration-' . $suffix, '', '', 'pix'), 'pedido é concluído');
+    testSame('pix', orderTrackingDetails($db, $order['public_code'])['payment_method'], 'recibo preserva forma de pagamento');
     testAssert(!changeKitchenOrderStatus($db, $order['id'], 'completed', 'preparing', 'integration-' . $suffix), 'estado final não reabre pedido');
     testSame(2500, listOrderItems($db, $order['id'])[0]['unit_price_cents'], 'itens mantêm o preço original da compra');
     $reportAfter = orderReport($db, $reportBounds)['totals'];
@@ -320,7 +325,7 @@ try {
                 $orderIds = $db->query('SELECT DISTINCT order_id FROM order_items WHERE product_id=' . $productId)->fetchAll(PDO::FETCH_COLUMN);
                 if ($orderIds !== []) {
                     $ids = implode(',', array_map('intval', $orderIds));
-                    foreach (['order_tracking', 'order_status_events', 'order_items'] as $table) {
+                    foreach (['payments', 'pickup_tickets', 'order_tracking', 'order_status_events', 'order_items'] as $table) {
                         $db->exec('DELETE FROM ' . $table . ' WHERE order_id IN (' . $ids . ')');
                     }
                     $db->exec('DELETE FROM orders WHERE id IN (' . $ids . ')');

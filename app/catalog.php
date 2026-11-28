@@ -46,6 +46,9 @@ function price(int $cents): string
 
 function productImage(array $product): string
 {
+    if (str_starts_with($product['image'], 'photo:')) {
+        return 'foto.php?id=' . rawurlencode(substr($product['image'], 6));
+    }
     return 'assets/img/' . rawurlencode($product['image']);
 }
 

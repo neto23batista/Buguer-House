@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
+const { randomBytes } = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 
 const dsn = process.env.DB_TEST_DSN ?? '';
@@ -21,7 +22,7 @@ if (path.dirname(directory) !== temporaryRoot || !path.basename(directory).start
     throw new Error('Diretório temporário E2E inesperado.');
 }
 const statePath = path.join(directory, 'state.json');
-const env = { ...process.env, APP_ENV: 'test', APP_DEMO: '1',
+const env = { ...process.env, APP_ENV: 'test', APP_DEMO: '1', VERCEL: '0',
     DB_HOST: host, DB_PORT: port, DB_NAME: name,
     DB_USER: process.env.DB_TEST_USER ?? 'root', DB_PASSWORD: process.env.DB_TEST_PASSWORD ?? '',
     DB_SSL_REQUIRED: '0', DB_SSL_CA: '', DB_SSL_CA_BASE64: '',
@@ -44,6 +45,13 @@ async function availablePort() {
 
 (async () => {
     try {
+        env.BH_BROWSER_PASSWORD = randomBytes(24).toString('hex');
+        env.ADMIN_USER = 'e2e-' + randomBytes(8).toString('hex');
+        const hash = spawnSync(php, ['-r', 'echo password_hash(getenv("BH_BROWSER_PASSWORD"), PASSWORD_DEFAULT);'],
+            { env, encoding: 'utf8', windowsHide: true });
+        if (hash.status !== 0) throw new Error('Falha ao preparar a conta de teste.');
+        env.ADMIN_PASSWORD_HASH = hash.stdout;
+        env.STORE_CONTACT_PHONE = '11900000000';
         prepare();
         const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
         const localPort = await availablePort();

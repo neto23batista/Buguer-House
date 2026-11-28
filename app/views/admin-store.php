@@ -26,6 +26,7 @@
     <form class="store-form" method="post" action="./?secao=loja">
         <input type="hidden" name="csrf" value="<?= escape($adminCsrf) ?>">
         <input type="hidden" name="action" value="save_store">
+        <input type="hidden" name="revision" value="<?= (int) ($storeSettings['revision'] ?? 0) ?>">
 
         <section class="admin-panel store-panel store-profile" aria-labelledby="store-profile-title">
             <h2 id="store-profile-title">Retirada e atendimento</h2>

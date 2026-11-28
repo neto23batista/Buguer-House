@@ -1,7 +1,7 @@
 FROM dunglas/frankenphp:1-php8.4-alpine@sha256:f81693fa548684eb12964eeab78d86325b75c5cd91289c09ffc4dd4404a641e5 AS runtime
 
 WORKDIR /app
-RUN install-php-extensions pdo_mysql \
+RUN install-php-extensions gd pdo_mysql \
     && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 COPY docker/php-production.ini /usr/local/etc/php/conf.d/burger-house.ini
 COPY Caddyfile /etc/caddy/Caddyfile

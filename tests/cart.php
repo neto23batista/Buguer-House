@@ -53,11 +53,12 @@ $quantities = [1 => 2];
 checkCart($status === 403 && $quantities === [1 => 2], 'Uma sessão inválida não pode alterar o carrinho.');
 checkCart(availableQuantities([1 => -1, 2 => '2', 999 => 1], $products) === [], 'Quantidades inválidas e produtos ausentes devem ser descartados.');
 
-function renderTestCart(array $quantities, array $products): string
+function renderTestCart(array $quantities, array $products, bool $accepting = true): string
 {
     $cart = cartSummary($quantities, $products);
     $csrf = 'token';
     $cartReview = '';
+    $storeStatus = ['accepting' => $accepting, 'message' => 'Loja pausada'];
     ob_start();
     require __DIR__ . '/../app/views/cart.php';
     return ob_get_clean();
@@ -72,5 +73,8 @@ checkCart(!str_contains($html, ' disabled'), 'Os incrementos devem estar dispon�
 $html = renderTestCart([1 => MAX_ORDER_ITEMS + 1], $products);
 checkCart(!str_contains($html, 'data-checkout'), 'Carrinhos antigos acima do teto devem ser ajustados antes do checkout.');
 checkCart(str_contains($html, 'Recarregar e conferir carrinho'), 'A recuperação deve oferecer um link GET para conferir o estado real.');
+
+$html = renderTestCart([1 => 1], $products, false);
+checkCart(!str_contains($html, 'data-checkout') && str_contains($html, 'Loja pausada'), 'O carrinho informa a pausa antes do checkout.');
 
 echo "Carrinho PHP: {$checks} verificações passaram.", PHP_EOL;

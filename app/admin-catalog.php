@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/catalog.php';
+require_once __DIR__ . '/product-photo.php';
 
 function adminProductImages(): array
 {
@@ -53,7 +54,7 @@ function normalizeAdminProduct(array $product): array
 function adminProducts(PDO $db): array
 {
     $rows = $db->query(
-        'SELECT id, slug, name, description, category, price_cents, image, image_alt, sort_order, is_active
+        'SELECT revision, id, slug, name, description, category, price_cents, image, image_alt, sort_order, is_active
          FROM products ORDER BY sort_order, id',
     );
     return array_map('normalizeAdminProduct', $rows->fetchAll(PDO::FETCH_ASSOC));
@@ -62,7 +63,7 @@ function adminProducts(PDO $db): array
 function adminProduct(PDO $db, int $id): ?array
 {
     $query = $db->prepare(
-        'SELECT id, slug, name, description, category, price_cents, image, image_alt, sort_order, is_active
+        'SELECT revision, id, slug, name, description, category, price_cents, image, image_alt, sort_order, is_active
          FROM products WHERE id = ?',
     );
     $query->execute([$id]);
@@ -83,9 +84,9 @@ function adminProductPriceCents(string $price): ?int
     return $cents <= 4294967295 ? $cents : null;
 }
 
-function validateAdminProduct(array $input): array
+function validateAdminProduct(array $input, ?PDO $db = null): array
 {
-    $values = [];
+    $values = ['revision' => filter_var($input['revision'] ?? null, FILTER_VALIDATE_INT) ?: 0];
     $errors = [];
     foreach (['name', 'description', 'category', 'price', 'image_alt', 'sort_order'] as $key) {
         $values[$key] = is_string($input[$key] ?? null) ? trim($input[$key]) : '';
@@ -113,7 +114,15 @@ function validateAdminProduct(array $input): array
         $errors['price'] = 'Informe um preço entre R$ 0,00 e R$ 42.949.672,95, com até duas casas decimais.';
     }
     if ($values['image'] !== '' && !in_array($values['image'], adminProductImages(), true)) {
-        $errors['image'] = 'Selecione uma imagem do catálogo.';
+        $found = false;
+        if ($db && preg_match('/\Aphoto:([a-f0-9]{64})\z/', $values['image'], $match)) {
+            $query = $db->prepare('SELECT 1 FROM product_photos WHERE digest = ?');
+            $query->execute([$match[1]]);
+            $found = (bool) $query->fetchColumn();
+        }
+        if (!$found) {
+            $errors['image'] = 'Selecione uma imagem do catálogo.';
+        }
     }
     if (!preg_match('/\A\d{1,5}\z/', $values['sort_order']) || (int) $values['sort_order'] > 65535) {
         $errors['sort_order'] = 'Informe um número inteiro de 0 a 65535.';
@@ -143,11 +152,11 @@ function saveAdminProduct(PDO $db, ?int $id, array $values): int
     if ($id !== null) {
         $query = $db->prepare(
             'UPDATE products SET name = ?, description = ?, category = ?, price_cents = ?, image = ?,
-             image_alt = ?, sort_order = ?, is_active = ? WHERE id = ?',
+             image_alt = ?, sort_order = ?, is_active = ?, revision = revision + 1 WHERE id = ? AND revision = ?',
         );
-        $query->execute([...$parameters, $id]);
-        if ($query->rowCount() === 0 && adminProduct($db, $id) === null) {
-            throw new DomainException('Este produto não está mais disponível para edição.');
+        $query->execute([...$parameters, $id, $values['revision']]);
+        if ($query->rowCount() === 0) {
+            throw new DomainException('O cadastro mudou. Confira os dados atuais e reaplique sua alteração.');
         }
         return $id;
     }

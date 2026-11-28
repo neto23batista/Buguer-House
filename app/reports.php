@@ -48,6 +48,19 @@ function orderReport(PDO $db, array $bounds): array
         );
         $totals->execute($bounds);
 
+        $timeliness = $db->prepare(
+            "SELECT COUNT(*) AS measured, COUNT(CASE WHEN ready_at <= pickup_at THEN 1 END) AS on_time,
+                    AVG(TIMESTAMPDIFF(SECOND, created_at, ready_at)) AS average_seconds
+             FROM (
+                 SELECT orders.id, orders.created_at, tracking.pickup_at, MIN(event.created_at) AS ready_at
+                 FROM orders JOIN order_tracking AS tracking ON tracking.order_id = orders.id
+                 JOIN order_status_events AS event ON event.order_id = orders.id AND event.next_status = 'ready'
+                 WHERE orders.created_at >= ? AND orders.created_at < ?
+                 GROUP BY orders.id, orders.created_at, tracking.pickup_at
+             ) AS measured_orders",
+        );
+        $timeliness->execute($bounds);
+
         $products = $db->prepare(
             "SELECT sales.product_id, COALESCE(products.name, snapshot.product_name) AS product_name, sales.units
              FROM (
@@ -63,13 +76,13 @@ function orderReport(PDO $db, array $bounds): array
         $products->execute($bounds);
 
         $cancellations = $db->prepare(
-            "SELECT events.reason, COUNT(*) AS orders_count FROM order_status_events AS events JOIN orders ON orders.id = events.order_id
+            "SELECT COALESCE(NULLIF(events.customer_reason, ''), events.reason) AS reason, COUNT(*) AS orders_count FROM order_status_events AS events JOIN orders ON orders.id = events.order_id
              WHERE events.next_status = 'cancelled' AND orders.created_at >= ? AND orders.created_at < ?
-             GROUP BY events.reason ORDER BY orders_count DESC, events.reason LIMIT 8",
+             GROUP BY COALESCE(NULLIF(events.customer_reason, ''), events.reason) ORDER BY orders_count DESC, reason LIMIT 8",
         );
         $cancellations->execute($bounds);
 
-        $report = ['totals' => $totals->fetch(), 'products' => $products->fetchAll(), 'cancellations' => $cancellations->fetchAll()];
+        $report = ['totals' => $totals->fetch(), 'timeliness' => $timeliness->fetch(), 'products' => $products->fetchAll(), 'cancellations' => $cancellations->fetchAll()];
         if ($ownsTransaction) {
             $db->commit();
         }

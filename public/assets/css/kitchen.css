@@ -48,6 +48,9 @@
 .kitchen-items li strong { flex: 0 0 auto; color: var(--muted); }
 .kitchen-items li span { overflow-wrap: anywhere; }
 .kitchen-ticket .admin-order-note { margin-bottom: 12px; }
+.kitchen-ticket [data-kitchen-due] { display: block; font-variant-numeric: tabular-nums; }
+.kitchen-ticket .is-overdue { color: var(--admin-accent); }
+.kitchen-ticket select { width: 100%; margin: 4px 0 8px; padding: 8px; font: inherit; }
 .kitchen-transition button { width: 100%; }
 .kitchen-transition button[aria-disabled], .kitchen-cancel-form button[aria-disabled] { opacity: .65; cursor: progress; }
 .kitchen-cancel { margin-top: 5px; }

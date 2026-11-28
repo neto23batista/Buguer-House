@@ -30,6 +30,19 @@ $utc = new DateTimeZone('UTC');
                         <h3 tabindex="-1"><a href="./?pedido=<?= escape($order['public_code']) ?>#pedido-detalhe">#<?= escape($order['public_code']) ?></a></h3>
                         <time datetime="<?= $created->format(DATE_ATOM) ?>" data-kitchen-created="<?= $created->getTimestamp() ?>">Há <?= $elapsedLabel ?></time>
                     </div>
+                    <?php if (!empty($order['ticket_number'])): ?>
+                        <p><strong>Senha de retirada <?= (int) $order['ticket_number'] ?></strong> · <?= date('d/m', strtotime($order['pickup_day'])) ?></p>
+                    <?php endif; ?>
+                    <?php if ($order['pickup_at']): ?>
+                        <p>Retirada prevista · <?= escape(orderPickupTime($order)) ?>
+                            <?php if ($stage !== 'ready'):
+                                $due = (new DateTimeImmutable($order['pickup_at'], $utc))->getTimestamp();
+                                $minutes = (int) ceil(abs($due - $now) / 60);
+                                ?>
+                                <strong class="<?= $due < $now ? 'is-overdue' : '' ?>" data-kitchen-due="<?= $due ?>"><?= $due < $now ? "Atrasado há {$minutes} min" : "Vence em {$minutes} min" ?></strong>
+                            <?php endif; ?>
+                        </p>
+                    <?php endif; ?>
                     <ul class="kitchen-items">
                         <?php foreach ($order['items'] as $item): ?>
                             <li><strong><?= $item['quantity'] ?>×</strong><span><?= escape($item['name']) ?></span></li>
@@ -44,6 +57,14 @@ $utc = new DateTimeZone('UTC');
                         <input type="hidden" name="order_id" value="<?= $id ?>">
                         <input type="hidden" name="expected_status" value="<?= $stage ?>">
                         <input type="hidden" name="next_status" value="<?= $next ?>">
+                        <?php if ($stage === 'ready'): ?>
+                            <label>Forma de pagamento na retirada
+                                <select name="payment_method" required>
+                                    <option value="">Selecione</option>
+                                    <?php foreach (paymentMethods() as $key => $label): ?><option value="<?= $key ?>"><?= $label ?></option><?php endforeach; ?>
+                                </select>
+                            </label>
+                        <?php endif; ?>
                         <button class="admin-button admin-button-primary" type="submit"><?= $actionLabel ?></button>
                     </form>
                     <details class="kitchen-cancel">
@@ -54,8 +75,16 @@ $utc = new DateTimeZone('UTC');
                             <input type="hidden" name="order_id" value="<?= $id ?>">
                             <input type="hidden" name="expected_status" value="<?= $stage ?>">
                             <input type="hidden" name="next_status" value="cancelled">
-                            <label for="cancel-reason-<?= $id ?>">Motivo do cancelamento</label>
-                            <textarea id="cancel-reason-<?= $id ?>" name="cancel_reason" required maxlength="240" rows="2"></textarea>
+                            <label>Motivo para o cliente (ao cancelar)
+                                <select name="customer_reason" required>
+                                    <option value="">Selecione um motivo</option>
+                                    <?php foreach (cancellationReasons() as $reasonLabel): ?>
+                                        <option><?= escape($reasonLabel) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <label for="cancel-reason-<?= $id ?>">Observação interna (opcional)</label>
+                            <textarea id="cancel-reason-<?= $id ?>" name="cancel_reason" maxlength="240" rows="2"></textarea>
                             <button class="admin-button admin-button-secondary" type="submit">Confirmar cancelamento</button>
                         </form>
                     </details>

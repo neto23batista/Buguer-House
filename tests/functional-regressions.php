@@ -144,7 +144,7 @@ try {
     $schedule = (object) ['afterTotals' => static function () use ($other, $order): void {
         changeKitchenOrderStatus($other, $order['id'], 'received', 'preparing', 'functional-test');
         changeKitchenOrderStatus($other, $order['id'], 'preparing', 'ready', 'functional-test');
-        changeKitchenOrderStatus($other, $order['id'], 'ready', 'completed', 'functional-test');
+        changeKitchenOrderStatus($other, $order['id'], 'ready', 'completed', 'functional-test', '', '', 'pix');
     }];
     $db->exec('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
     $db->setAttribute(PDO::ATTR_STATEMENT_CLASS, [FunctionalReportStatement::class, [$schedule]]);
@@ -179,7 +179,7 @@ try {
     }
     if ($orderIds !== []) {
         $ids = implode(',', array_map('intval', $orderIds));
-        foreach (['order_tracking', 'order_status_events', 'order_items'] as $table) {
+        foreach (['payments', 'pickup_tickets', 'order_tracking', 'order_status_events', 'order_items'] as $table) {
             $db->exec('DELETE FROM ' . $table . ' WHERE order_id IN (' . $ids . ')');
         }
         $db->exec('DELETE FROM orders WHERE id IN (' . $ids . ')');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/catalog.php';
+require_once __DIR__ . '/team.php';
 
 const ADMIN_IDLE_SECONDS = 8 * 3600;
 const ADMIN_SESSION_SECONDS = 12 * 3600;
@@ -27,6 +28,15 @@ function beginAdminSession(bool $passive = false): array
     $csrf = $_SESSION['admin_csrf'] ??= bin2hex(random_bytes(32));
     $role = $adminSession['role'] ?? 'owner';
     $active = $accounts[$role] ?? $accounts['owner'];
+    if (isset($adminSession['staff_name'])) {
+        try {
+            $active = staffAccount(databaseConnection(), $adminSession['staff_name']) ?? adminAccount('', '');
+            $role = 'operator';
+        } catch (PDOException $error) {
+            http_response_code(503);
+            exit('A equipe está temporariamente indisponível. Tente novamente.');
+        }
+    }
     $configured = $accounts['owner']['configured'];
     $now = time();
     $lastSeen = $adminSession['last_seen'] ?? 0;

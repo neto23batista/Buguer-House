@@ -9,7 +9,7 @@ umask 077
 output_directory="${1:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/backups}"
 mkdir -p -- "$output_directory"
 output_path="$output_directory/$DB_NAME-$(date -u +%Y%m%d-%H%M%S)-$$.sql"
-if ! mysqldump "--defaults-extra-file=$MYSQL_BACKUP_CONFIG" --single-transaction --quick --routines --triggers --events \
+if ! mysqldump "--defaults-extra-file=$MYSQL_BACKUP_CONFIG" --hex-blob --single-transaction --quick --routines --triggers --events \
     --no-tablespaces --set-gtid-purged=OFF --default-character-set=utf8mb4 "--result-file=$output_path" "$DB_NAME"; then
     rm -f -- "$output_path"
     echo 'O backup falhou. Nenhum arquivo parcial foi mantido.' >&2

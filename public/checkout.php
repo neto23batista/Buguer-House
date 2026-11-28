@@ -7,6 +7,7 @@ require __DIR__ . '/../app/cart.php';
 require __DIR__ . '/../app/session.php';
 require __DIR__ . '/../app/orders.php';
 require __DIR__ . '/../app/presentation.php';
+require_once __DIR__ . '/../app/cash.php';
 require_once __DIR__ . '/../app/assets.php';
 
 startBurgerSession();
@@ -102,6 +103,9 @@ try {
             } elseif ($previousDraft['fingerprint'] !== $fingerprint) {
                 http_response_code(409);
                 $errors['form'] = 'Seu carrinho mudou. Confira os itens e os valores atualizados.';
+            } elseif (($previousDraft['prep_minutes'] ?? null) !== $store['prep_minutes']) {
+                http_response_code(409);
+                $errors['form'] = 'O prazo de preparo mudou. Confira a nova previsão antes de confirmar.';
             } elseif (!is_string($previousDraft['pickup_address'] ?? null)) {
                 http_response_code(409);
                 $errors['form'] = 'Confira o endereço de retirada antes de enviar o pedido.';
@@ -135,7 +139,7 @@ try {
                 try {
                     $order = placeOrder(
                         $db, $sentToken, $details, $rawCart, $fingerprint,
-                        $previousDraft['pickup_address'], clientAddress(),
+                        $previousDraft['pickup_address'], clientAddress(), $previousDraft['prep_minutes'],
                     );
                     $receipts[$sentToken] = $order['public_code'];
                     $_SESSION['order_receipts'] = array_slice($receipts, -20, null, true);
@@ -169,10 +173,11 @@ try {
         rememberCart($quantities, $products);
         if ($cart['items']) {
             $sameDraft = ($previousDraft['fingerprint'] ?? null) === $fingerprint
-                && ($previousDraft['pickup_address'] ?? null) === $pickupAddress;
+                && ($previousDraft['pickup_address'] ?? null) === $pickupAddress
+                && ($previousDraft['prep_minutes'] ?? null) === $store['prep_minutes'];
             $draft = $sameDraft
                 ? $previousDraft
-                : ['token' => bin2hex(random_bytes(32)), 'fingerprint' => $fingerprint, 'pickup_address' => $pickupAddress];
+                : ['token' => bin2hex(random_bytes(32)), 'fingerprint' => $fingerprint, 'pickup_address' => $pickupAddress, 'prep_minutes' => $store['prep_minutes']];
             $_SESSION['checkout_draft'] = $draft;
         } else {
             unset($_SESSION['checkout_draft']);
@@ -281,6 +286,12 @@ if ($polling) {
                 <?php if ($cartReview !== ''): ?><p role="status"><?= escape($cartReview) ?></p><?php endif; ?>
                 <p>Escolha os itens no cardápio para fazer um pedido.</p>
                 <a class="primary-button" href="./#cardapio">Ver cardápio <span aria-hidden="true">→</span></a>
+            </div>
+        <?php elseif (!$availability['accepting']): ?>
+            <div class="checkout-state checkout-card">
+                <h1><?= escape($availability['label']) ?></h1>
+                <p><?= escape($availability['message']) ?></p>
+                <a class="primary-button" href="./?carrinho=1#carrinho">Voltar ao carrinho</a>
             </div>
         <?php else: ?>
             <div class="checkout-intro">

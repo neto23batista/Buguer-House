@@ -16,6 +16,11 @@ function migrationManifest(): array
         '006_order_security' => 'order-security.sql',
         '007_sessions' => 'sessions.sql',
         '008_report_indexes' => 'report-indexes.sql',
+        '009_store_revision' => 'store-revision.sql',
+        '010_product_revision' => 'product-revision.sql',
+        '011_customer_reason' => 'customer-reason.sql',
+        '012_operations' => 'operations.sql',
+        '013_pickup_tickets' => 'pickup-tickets.sql',
     ];
 }
 

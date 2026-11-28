@@ -33,6 +33,12 @@ function setConnection(text, isOffline = false) {
 
 function updateElapsed() {
     const now = Date.now() + clockOffset;
+    board.querySelectorAll('[data-kitchen-due]').forEach((node) => {
+        const remaining = Number(node.dataset.kitchenDue) * 1000 - now;
+        const minutes = Math.ceil(Math.abs(remaining) / 60000);
+        node.classList.toggle('is-overdue', remaining < 0);
+        node.textContent = remaining < 0 ? `Atrasado há ${minutes} min` : `Vence em ${minutes} min`;
+    });
     board.querySelectorAll('[data-kitchen-created]').forEach((node) => {
         const elapsed = Math.max(0, Math.floor((now - Number(node.dataset.kitchenCreated) * 1000) / 60000));
         const hours = Math.floor(elapsed / 60);

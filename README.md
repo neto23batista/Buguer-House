@@ -115,25 +115,37 @@ Use credencial de migração com permissões de criação/alteração; a aplica�
 
 ## Permissões do banco
 
+Esta atualização acrescenta as migrações 009 a 013. Aplique-as com `php bin/migrate.php` antes de ativar a nova versão e confira os privilégios abaixo.
+
 A conta de migração precisa criar/alterar tabelas e índices e ler/gravar os dados iniciais. Em produção, a conta web precisa somente:
 
-- `products`: `SELECT`, `INSERT` e `UPDATE` nos campos editáveis do catálogo.
+- `products`: `SELECT`, `INSERT` e `UPDATE` nos campos editáveis do catálogo e em `revision`.
 - `orders`: `SELECT`, `INSERT` e `UPDATE(status, updated_at)`.
 - `order_items`, `order_tracking` e `order_status_events`: `SELECT`, `INSERT`.
-- `store_settings`: `SELECT` e `UPDATE(pickup_address, prep_minutes, paused, schedule, exceptions)`.
+- `store_settings`: `SELECT` e `UPDATE(pickup_address, prep_minutes, paused, schedule, exceptions, revision)`.
+- `product_photos`: `SELECT`, `INSERT`, `UPDATE(digest)`. Fotos enviadas fazem parte do backup do banco.
+- `staff_accounts`: `SELECT`, `INSERT`, `UPDATE(password_hash, active, revision)`.
+- `pickup_sequences`: `SELECT`, `INSERT`, `UPDATE(last_number)`. Em `pickup_tickets`, `payments` e `cash_events`: `SELECT`, `INSERT`.
+- `cash_days`: `SELECT`, `INSERT`, `UPDATE(business_date, counted_cents, closed_by, closed_at, revision)`.
 - `web_sessions`, `admin_login_attempts` e `order_rate_limits`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
 
 A conta web não precisa de acesso a `schema_migrations`, `mysql.user`, `CREATE`, `ALTER` ou `DROP`. Use permissões por tabela se o provedor não suportar a restrição por coluna na versão instalada. Não atribua uma role global de leitura/escrita: os privilégios das roles se somam. Confira `SHOW GRANTS` da conta efetivamente usada pelo container e mantenha a credencial do migrador fora da Vercel. Configure usuário e origem permitida no provedor. O Compose usa uma conta com permissões no banco de desenvolvimento.
 
 ## Operação
 
-O dono acessa Pedidos, Cozinha, Cardápio, Loja e Relatórios. O operador acessa Pedidos e Cozinha. O fluxo é Recebido → Em preparo → Pronto para retirada → Concluído; cancelamentos exigem motivo e geram histórico. Cozinha e confirmação atualizam a cada oito segundos com a página visível. Links privados duram três dias e exibem andamento e itens, sem nome ou telefone do cliente.
+O dono acessa Pedidos, Cozinha, Cardápio, Loja, Relatórios, Equipe e Caixa. Em Equipe, cria logins individuais de operador, troca senhas e desativa acessos. A troca de senha e a desativação invalidam as sessões do colaborador. Os logins existentes no ambiente continuam disponíveis.
 
-O checkout aceita até 40 unidades, três pedidos por telefone e 20 por origem em 15 minutos. Preço, composição, nome e apresentação dos produtos são conferidos ao confirmar; mudanças relevantes no produto, carrinho ou endereço exigem revisão. A sessão administrativa expira após oito horas sem atividade ou 12 horas desde o login; a retenção do armazenamento é de pelo menos 12 horas. Perder a sessão do carrinho mantém um aviso com recarga antes de novos envios.
+Cada novo pedido recebe uma senha numérica por dia de criação (horário de Brasília). No balcão, a busca aceita essa senha com a data ou o código completo, inclusive de pedidos antigos. O acompanhamento externo requer o link privado.
+
+Ao concluir uma retirada, o atendente registra dinheiro, Pix ou cartão. O caixa contabiliza os recebimentos pelo dia local de pagamento. Para fechar, informe apenas o dinheiro das vendas, descontando o fundo de troco. O responsável pode consultar dias anteriores e reabrir um caixa para novos recebimentos. O histórico registra o responsável e a diferença entre contado e esperado. O caixa contabiliza os pagamentos registrados a partir da implantação.
+
+O fluxo é Recebido → Em preparo → Pronto para retirada → Concluído; cancelamentos exigem motivo e geram histórico. Cozinha e confirmação atualizam a cada oito segundos com a página visível. Links privados duram três dias e exibem andamento e itens, sem nome ou telefone do cliente.
+
+O checkout aceita até 40 unidades, três pedidos por telefone e 20 por origem em 15 minutos. Prazo de preparo, preço, composição, nome e apresentação dos produtos são conferidos ao confirmar; mudanças relevantes no produto, carrinho ou endereço exigem revisão. A sessão administrativa expira após oito horas sem atividade ou 12 horas desde o login; a retenção do armazenamento é de pelo menos 12 horas. Perder a sessão do carrinho mantém um aviso com recarga antes de novos envios.
 
 O login bloqueia a origem após cinco falhas em cinco minutos. Falhas distribuídas para a mesma conta acrescentam atraso progressivo e limitado, depois de liberar os locks; não bloqueiam uma senha correta de outra origem. Isso preserva a disponibilidade do dono sem dispensar a proteção por origem. Na Vercel, o IP vem do `X-Forwarded-For` sobrescrito pela plataforma, somente quando o ambiente de execução tem `VERCEL=1`; fora dela, vem do servidor configurado com proxies confiáveis.
 
-Relatórios usam a **data de criação** do pedido para quantidades, valor concluído, ticket médio, mais vendidos e cancelamentos. Não conciliam receita por data de pagamento. As fotos são arquivos de `public/assets/img/`; inclua novas imagens no projeto e faça novo deploy para aparecerem no seletor do painel.
+Relatórios usam a **data de criação** do pedido para quantidades, valor concluído, ticket médio, mais vendidos e cancelamentos. O indicador de pontualidade compara o primeiro registro de pronto com o horário prometido, apenas para pedidos com ambos os registros. Não conciliam receita por data de pagamento. O dono pode escolher uma imagem existente ou enviar JPEG, PNG e WebP pelo painel. O servidor valida, redimensiona e grava a foto no banco como JPEG. A execução sem Docker requer a extensão GD para uploads.
 
 As consultas do relatório compartilham um snapshot em leitura consistente. A fila e os pedidos recentes são ordenados por data, com ID para desempate, inclusive em TiDB com múltiplos nós. URLs de CSS e JavaScript carregam uma versão derivada do conteúdo, evitando misturar assets antigos com uma página nova.
 
@@ -234,7 +246,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-O runner só aceita banco local dedicado, inicia e encerra um servidor PHP isolado e restaura as fixtures. Chromium desktop e celular verificam modal/foco/teclado, perda de sessão, desconexão sem repetição de POST e feedback/envio único do checkout. O envio final é interceptado para não criar compras. PHP de produção não depende de Node ou Playwright.
+O runner só aceita banco local dedicado, inicia e encerra um servidor PHP isolado e restaura as fixtures. Chromium desktop e celular verificam modal/foco/teclado, perda de sessão, desconexão sem repetição de POST e feedback/envio único do checkout. O cenário de envio único intercepta a resposta. Os cenários de operação criam pedidos fictícios no banco dedicado, verificam cozinha, acompanhamento e relatório e removem os pedidos ao terminar. PHP de produção não depende de Node ou Playwright.
 
 Teste manual: configure endereço e horários e despause a loja. Adicione dois House Smash e uma Fritas da Casa ao catálogo inicial: total R$ 72,70. Confirme, acompanhe a cozinha e marque como pronto e concluído. Abra o link privado em outro navegador. Os preços de demonstração podem ter sido editados pelo dono.
 

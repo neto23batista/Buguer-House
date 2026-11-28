@@ -1,4 +1,5 @@
 <div class="admin-page-heading"><h1>Relatórios</h1></div>
+<p>Período pela data de criação do pedido, no horário de Brasília.</p>
 <form class="admin-panel report-filter" method="get" action="./">
     <input type="hidden" name="secao" value="relatorios">
     <label class="admin-editor-field">De <input name="inicio" type="date" value="<?= escape($period['start']) ?>" required></label>
@@ -18,6 +19,10 @@
         <div><dt>Cancelados</dt><dd><?= (int) $totals['cancelled'] ?></dd></div>
         <div><dt>Valor concluído</dt><dd><?= price((int) $totals['total']) ?></dd></div>
         <div><dt>Ticket médio concluído</dt><dd><?= $totals['completed'] ? price((int) round($totals['total'] / $totals['completed'])) : '—' ?></dd></div>
+        <?php $timing = $report['timeliness']; ?>
+        <div><dt>Prontos no prazo</dt><dd><?= $timing['measured'] ? number_format(100 * $timing['on_time'] / $timing['measured'], 1, ',', '.') . '%' : '—' ?></dd>
+            <small><?= (int) $timing['on_time'] ?> de <?= (int) $timing['measured'] ?> com previsão e registro de pronto</small></div>
+        <div><dt>Tempo médio até ficar pronto</dt><dd><?= $timing['measured'] ? round($timing['average_seconds'] / 60) . ' min' : '—' ?></dd></div>
     </dl>
     <div class="admin-layout">
         <section class="admin-panel admin-detail" aria-labelledby="report-products">

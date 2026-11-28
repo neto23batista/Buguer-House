@@ -56,8 +56,9 @@
                 <?php elseif ($catalogErrors): ?>
                     <p class="admin-alert admin-alert-error" role="alert">Revise os campos destacados para salvar o produto.</p>
                 <?php endif; ?>
-                <form class="admin-editor-form" action="<?= escape(adminCatalogUrl($catalogId, $catalogId === null)) ?>#produto-editor" method="post">
+                <form class="admin-editor-form" enctype="multipart/form-data" action="<?= escape(adminCatalogUrl($catalogId, $catalogId === null)) ?>#produto-editor" method="post">
                     <input type="hidden" name="action" value="save_product">
+                    <input type="hidden" name="revision" value="<?= (int) ($catalogValues['revision'] ?? 0) ?>">
                     <input type="hidden" name="csrf" value="<?= escape($adminCsrf) ?>">
                     <input type="hidden" name="product_id" value="<?= $catalogId ?? '' ?>">
 
@@ -89,10 +90,15 @@
                         <label for="product-image">Imagem</label>
                         <select id="product-image" name="image"<?= $fieldError('image') ?>>
                             <option value="">Sem imagem</option>
+                            <?php if (str_starts_with($catalogValues['image'] ?? '', 'photo:')): ?>
+                                <option selected value="<?= $fieldValue('image') ?>">Foto enviada</option>
+                            <?php endif; ?>
                             <?php foreach ($catalogImages as $filename): ?>
                                 <option value="<?= escape($filename) ?>"<?= $filename === ($catalogValues['image'] ?? null) ? ' selected' : '' ?>><?= escape($filename) ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <label for="product-upload">Enviar nova foto (até 2 MB)</label>
+                        <input type="file" id="product-upload" name="photo" accept="image/jpeg,image/png,image/webp">
                         <?php $fieldMessage('image'); ?>
                     </div>
                     <div class="admin-editor-field admin-editor-wide">

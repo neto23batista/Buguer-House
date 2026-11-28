@@ -27,7 +27,7 @@ function storePickupAddress(string $address): string
 
 function loadStore(PDO $db, bool $lock = false): array
 {
-    $sql = 'SELECT pickup_address, prep_minutes, paused, schedule, exceptions FROM store_settings WHERE id = 1';
+    $sql = 'SELECT revision, pickup_address, prep_minutes, paused, schedule, exceptions FROM store_settings WHERE id = 1';
     // Exclusive locking also works on TiDB; checkouts briefly serialize on this store row.
     $row = $db->query($sql . ($lock ? ' FOR UPDATE' : ''))->fetch(PDO::FETCH_ASSOC);
     if ($row === false) {
@@ -35,6 +35,7 @@ function loadStore(PDO $db, bool $lock = false): array
     }
 
     return [
+        'revision' => (int) $row['revision'],
         'pickup_address' => storePickupAddress($row['pickup_address']),
         'pickup_address_input' => $row['pickup_address'],
         'prep_minutes' => (int) $row['prep_minutes'],
@@ -270,6 +271,7 @@ function validateStoreSettings(array $input): array
     }
 
     return [[
+        'revision' => filter_var($input['revision'] ?? null, FILTER_VALIDATE_INT) ?: 0,
         'pickup_address' => $address,
         'pickup_address_input' => $address,
         'prep_minutes' => $minutes,
@@ -283,7 +285,7 @@ function validateStoreSettings(array $input): array
 function saveStoreSettings(PDO $db, array $values): void
 {
     $query = $db->prepare(
-        'UPDATE store_settings SET pickup_address = ?, prep_minutes = ?, paused = ?, schedule = ?, exceptions = ? WHERE id = 1',
+        'UPDATE store_settings SET pickup_address = ?, prep_minutes = ?, paused = ?, schedule = ?, exceptions = ?, revision = revision + 1 WHERE id = 1 AND revision = ?',
     );
     $query->execute([
         $values['pickup_address'],
@@ -291,5 +293,9 @@ function saveStoreSettings(PDO $db, array $values): void
         (int) $values['paused'],
         json_encode((object) $values['schedule'], JSON_THROW_ON_ERROR),
         json_encode((object) $values['exceptions'], JSON_THROW_ON_ERROR),
+        $values['revision'],
     ]);
+    if ($query->rowCount() !== 1) {
+        throw new DomainException('A loja foi atualizada. Confira os dados atuais e reaplique sua alteração.');
+    }
 }

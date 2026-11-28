@@ -68,9 +68,27 @@ $page = filter_var($_GET['pagina'] ?? 1, FILTER_VALIDATE_INT, [
 ]) ?: 1;
 $code = $_GET['pedido'] ?? null;
 $code = is_string($code) && preg_match('/\A[A-F0-9]{16}\z/', $code) ? $code : null;
+$search = is_string($_GET['buscar'] ?? null) ? trim($_GET['buscar']) : '';
+$searchError = null;
+$ticketNumber = null;
+$ticketDate = $_GET['data_senha'] ?? cashToday();
+if ($search !== '') {
+    $normalized = strtoupper(ltrim($search, '#'));
+    if (preg_match('/\A[A-F0-9]{16}\z/', $normalized)) {
+        $code = $normalized;
+    } elseif (preg_match('/\A[0-9]{1,9}\z/', $normalized) && validCashDate($ticketDate)) {
+        $ticketNumber = (int) $normalized;
+    } else {
+        $searchError = 'Informe o código completo ou a senha numérica com a data do pedido.';
+    }
+}
+$isTeam = ($_GET['secao'] ?? null) === 'equipe';
+$isCash = ($_GET['secao'] ?? null) === 'caixa';
+$cashDate = $_GET['dia'] ?? cashToday();
 $isCatalog = ($_GET['secao'] ?? null) === 'cardapio';
 $isStore = ($_GET['secao'] ?? null) === 'loja';
 $isReport = ($_GET['secao'] ?? null) === 'relatorios';
+$conflictingValues = null;
 $storeSettings = null;
 $storeErrors = [];
 $catalogId = filter_var($_GET['produto'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 4294967295]]) ?: null;
@@ -80,10 +98,14 @@ $catalogValues = null;
 $catalogErrors = [];
 $flash = $_SESSION['admin_message'] ?? null;
 unset($_SESSION['admin_message']);
-$restrictedSection = $isLoggedIn && !$canManageStore && ($isStore || $isCatalog || $isReport);
+$restrictedSection = $isLoggedIn && !$canManageStore && ($isStore || $isCatalog || $isReport || $isTeam || $isCash);
 $sectionUrl = $isReport ? './?secao=relatorios' : ($isStore ? './?secao=loja' : ($isCatalog ? $catalogUrl : './'));
 $sectionTitle = $isReport ? 'Relatórios' : ($isStore ? 'Configurações da loja' : ($isCatalog ? 'Cardápio' : 'Pedidos'));
 
+if ($isTeam || $isCash) {
+    $sectionUrl = $isTeam ? './?secao=equipe' : './?secao=caixa';
+    $sectionTitle = $isTeam ? 'Equipe' : 'Caixa';
+}
 if (!$isConfigured) {
     http_response_code(503);
 } elseif ($restrictedSection) {
@@ -102,15 +124,22 @@ if (!$isConfigured) {
         $operator = $accounts['operator'];
         $role = $operator['configured'] && hash_equals($operator['user'], $username) ? 'operator' : 'owner';
         $account = $accounts[$role];
-        $maxPasswordBytes = $account['algorithm'] === PASSWORD_BCRYPT ? 72 : 1024;
-        $knownUser = hash_equals($account['user'], $username);
-
         try {
             $db = databaseConnection();
+            $member = null;
+            if (!in_array($username, array_column($accounts, 'user'), true)) {
+                $member = staffAccount($db, $username);
+                if ($member !== null) {
+                    $role = 'operator';
+                    $account = $member;
+                }
+            }
+            $maxPasswordBytes = $account['algorithm'] === PASSWORD_BCRYPT ? 72 : 1024;
+            $knownUser = $account['configured'] && hash_equals($account['user'], $username);
             $verified = checkAdminLogin(
                 $db,
                 $knownUser ? $account['user'] : null,
-                static fn (): bool => is_string($password) && strlen($password) <= $maxPasswordBytes
+                static fn (): bool => is_string($password) && !str_contains($password, "\0") && strlen($password) <= $maxPasswordBytes
                     && password_verify($password, $account['hash']) && $knownUser,
             );
             pruneAdminLoginAttempts($db);
@@ -127,6 +156,7 @@ if (!$isConfigured) {
             $_SESSION['admin_session'] = [
                 'role' => $role, 'version' => $account['version'], 'last_seen' => $now, 'started_at' => $now,
             ];
+            if ($member !== null) $_SESSION['admin_session']['staff_name'] = $member['user'];
             adminRedirect($role === 'owner' ? $sectionUrl : 'cozinha.php');
         } catch (PDOException $exception) {
             error_log('Burger House login: ' . $exception->getMessage());
@@ -139,6 +169,27 @@ if (!$isConfigured) {
         unset($_SESSION['admin_session'], $_SESSION['admin_csrf']);
         session_regenerate_id(true);
         adminRedirect('./');
+    } elseif ($isTeam && in_array($action, ['staff_create', 'staff_disable', 'staff_reset'], true)) {
+        try {
+            updateStaff(databaseConnection(), $_POST, $accounts);
+            adminRedirect($sectionUrl, 'Conta atualizada.');
+        } catch (DomainException $error) {
+            adminRedirect($sectionUrl, $error->getMessage(), true);
+        } catch (PDOException $error) {
+            adminRedirect($sectionUrl, 'Não foi possível atualizar a conta.', true);
+        }
+    } elseif ($isCash && in_array($action, ['cash_close', 'cash_reopen'], true)) {
+        $date = $_POST['business_date'] ?? null;
+        if (!validCashDate($date)) adminRedirect($sectionUrl, 'Data inválida.', true);
+        $destination = $sectionUrl . '&dia=' . $date;
+        try {
+            settleCash(databaseConnection(), $date, $adminUser, $_POST);
+            adminRedirect($destination, $action === 'cash_close' ? 'Caixa fechado.' : 'Caixa reaberto.');
+        } catch (DomainException $error) {
+            adminRedirect($destination, $error->getMessage(), true);
+        } catch (PDOException $error) {
+            adminRedirect($destination, 'Não foi possível salvar o caixa.', true);
+        }
     } elseif ($action === 'save_store' && $isStore) {
         [$storeSettings, $storeErrors] = validateStoreSettings($_POST);
         if ($storeErrors) {
@@ -148,6 +199,11 @@ if (!$isConfigured) {
             try {
                 saveStoreSettings(databaseConnection(), $storeSettings);
                 adminRedirect('./?secao=loja', 'Configurações salvas.');
+            } catch (DomainException $exception) {
+                $conflictingValues = $storeSettings;
+                $storeSettings = null;
+                http_response_code(409);
+                $flash = ['text' => $exception->getMessage(), 'error' => true];
             } catch (PDOException $exception) {
                 error_log('Burger House configurações: ' . $exception->getMessage());
                 http_response_code(503);
@@ -161,18 +217,38 @@ if (!$isConfigured) {
             adminRedirect($catalogUrl, 'Abra o produto antes de salvar as alterações.', true);
         }
 
-        [$catalogValues, $catalogErrors] = validateAdminProduct($_POST);
+        try {
+            $catalogDb = databaseConnection();
+            [$catalogValues, $catalogErrors] = validateAdminProduct($_POST, $catalogDb);
+            $photo = uploadedProductPhoto($_FILES['photo'] ?? []);
+        } catch (DomainException $exception) {
+            $catalogErrors['image'] = $exception->getMessage();
+        } catch (PDOException $exception) {
+            adminRedirect($catalogUrl, 'O catálogo está indisponível. Tente novamente.', true);
+        }
         if ($catalogErrors) {
             http_response_code(422);
             $flash = ['text' => 'Revise os campos destacados e tente novamente.', 'error' => true];
         } else {
             try {
-                $id = saveAdminProduct(databaseConnection(), $catalogId, $catalogValues);
+                $catalogDb->beginTransaction();
+                if ($photo !== null) {
+                    $digest = hash('sha256', $photo);
+                    $query = $catalogDb->prepare('INSERT INTO product_photos (digest,jpeg) VALUES (?,?) ON DUPLICATE KEY UPDATE digest=product_photos.digest');
+                    $query->execute([$digest, $photo]);
+                    $catalogValues['image'] = 'photo:' . $digest;
+                }
+                $id = saveAdminProduct($catalogDb, $catalogId, $catalogValues);
+                $catalogDb->commit();
                 adminRedirect(adminCatalogUrl($id) . '#produto-editor', $catalogId === null ? 'Produto cadastrado.' : 'Produto atualizado.');
             } catch (DomainException $exception) {
+                $catalogDb->rollBack();
+                $conflictingValues = $catalogValues;
+                $catalogValues = null;
                 http_response_code(409);
                 $flash = ['text' => $exception->getMessage(), 'error' => true];
             } catch (PDOException $exception) {
+                if ($catalogDb->inTransaction()) $catalogDb->rollBack();
                 error_log('Burger House admin catálogo: ' . $exception->getMessage());
                 http_response_code(503);
                 $flash = ['text' => 'O produto não pôde ser salvo. Tente novamente.', 'error' => true];
@@ -191,7 +267,11 @@ if (!$isConfigured) {
 
         try {
             $cancelReason = $_POST['cancel_reason'] ?? '';
-            $changed = changeKitchenOrderStatus(databaseConnection(), $id, $expected, $next, $adminUser, is_string($cancelReason) ? $cancelReason : '');
+            $customerReason = $_POST['customer_reason'] ?? '';
+            if ($next === 'cancelled' && $customerReason === '') {
+                throw new DomainException('Selecione um motivo de cancelamento para o cliente.');
+            }
+            $changed = changeKitchenOrderStatus(databaseConnection(), $id, $expected, $next, $adminUser, is_string($cancelReason) ? $cancelReason : '', is_string($customerReason) ? $customerReason : '', is_string($_POST['payment_method'] ?? null) ? $_POST['payment_method'] : '');
         } catch (DomainException $exception) {
             adminRedirect($destination, $exception->getMessage(), true);
         } catch (PDOException $exception) {
@@ -214,6 +294,7 @@ session_write_close();
 $orders = [];
 $order = null;
 $items = [];
+$payment = null;
 $events = [];
 $hasNextPage = false;
 $databaseAvailable = true;
@@ -225,7 +306,15 @@ $period = $isReport ? reportPeriod($_GET) : null;
 if ($isLoggedIn && !$restrictedSection) {
     try {
         $db = databaseConnection();
-        if ($isReport) {
+        if ($isTeam) {
+            $staff = $db->query('SELECT username,active,revision FROM staff_accounts ORDER BY username')->fetchAll();
+        } elseif ($isCash) {
+            if (!validCashDate($cashDate)) {
+                $cashDate = cashToday();
+                $flash = ['text' => 'Data inválida. Exibindo o caixa de hoje.', 'error' => true];
+            }
+            $cashReport = cashReport($db, $cashDate);
+        } elseif ($isReport) {
             if ($period['error'] === null) {
                 $report = orderReport($db, $period['bounds']);
             } else {
@@ -249,12 +338,29 @@ if ($isLoggedIn && !$restrictedSection) {
                 $catalogValues ??= adminProductDefaults();
             }
         } else {
-            $orders = listOrders($db, $filter, ADMIN_ORDER_PAGE_SIZE + 1, ($page - 1) * ADMIN_ORDER_PAGE_SIZE);
-            $hasNextPage = count($orders) > ADMIN_ORDER_PAGE_SIZE;
-            $orders = array_slice($orders, 0, ADMIN_ORDER_PAGE_SIZE);
-            $order = $code !== null ? findOrder($db, $code) : ($orders[0] ?? null);
+            if ($search !== '') {
+                if ($ticketNumber !== null) {
+                    $query = $db->prepare('SELECT orders.public_code FROM pickup_tickets JOIN orders ON orders.id=pickup_tickets.order_id
+                        WHERE pickup_day=? AND ticket_number=?');
+                    $query->execute([$ticketDate, $ticketNumber]);
+                    $code = $query->fetchColumn() ?: null;
+                }
+                $order = $searchError === null && $code !== null ? findOrder($db, $code) : null;
+                $searchError ??= $order === null ? 'Nenhum pedido encontrado com esse código.' : null;
+                $orders = $order === null ? [] : [$order];
+            } else {
+                $orders = listOrders($db, $filter, ADMIN_ORDER_PAGE_SIZE + 1, ($page - 1) * ADMIN_ORDER_PAGE_SIZE);
+                $hasNextPage = count($orders) > ADMIN_ORDER_PAGE_SIZE;
+                $orders = array_slice($orders, 0, ADMIN_ORDER_PAGE_SIZE);
+                $order = $code !== null ? findOrder($db, $code) : ($orders[0] ?? null);
+            }
             if ($order !== null) {
                 $items = listOrderItems($db, (int) $order['id']);
+                if ($order['status'] === 'completed') {
+                    $paymentQuery = $db->prepare('SELECT method,received_at FROM payments WHERE order_id=?');
+                    $paymentQuery->execute([$order['id']]);
+                    $payment = $paymentQuery->fetch();
+                }
                 $events = listOrderStatusEvents($db, (int) $order['id']);
             }
         }
@@ -263,6 +369,21 @@ if ($isLoggedIn && !$restrictedSection) {
         $databaseAvailable = false;
         http_response_code(503);
     }
+}
+
+if ($conflictingValues !== null) {
+    $current = $isStore ? $storeSettings : $catalogValues;
+    $labels = $isStore
+        ? ['pickup_address_input' => 'endereço', 'prep_minutes' => 'prazo', 'paused' => 'pausa', 'schedule' => 'horários', 'exceptions' => 'datas especiais']
+        : ['name' => 'nome', 'description' => 'descrição', 'category' => 'categoria', 'price_cents' => 'preço', 'image' => 'foto',
+            'image_alt' => 'texto alternativo', 'sort_order' => 'ordem', 'is_active' => 'disponibilidade'];
+    $different = [];
+    if ($current !== null) {
+        foreach ($labels as $field => $label) {
+            if ($conflictingValues[$field] != $current[$field]) $different[] = $label;
+        }
+    }
+    if ($different) $flash['text'] .= ' Campos que diferem do envio: ' . implode(', ', $different) . '.';
 }
 
 $statusActions = [
@@ -330,17 +451,24 @@ $statusActions = [
     <?php else: ?>
         <main id="admin-main" class="shell admin-main" tabindex="-1">
             <nav class="admin-sections" aria-label="Seções do painel">
-                <a href="./"<?= !$isCatalog && !$isStore && !$isReport ? ' aria-current="page"' : '' ?>>Pedidos</a>
+                <a href="./"<?= !$isCatalog && !$isStore && !$isReport && !$isTeam && !$isCash ? ' aria-current="page"' : '' ?>>Pedidos</a>
                 <a href="cozinha.php">Cozinha</a>
                 <?php if ($canManageStore): ?>
                     <a href="<?= escape(adminCatalogUrl()) ?>"<?= $isCatalog ? ' aria-current="page"' : '' ?>>Cardápio</a>
                     <a href="./?secao=loja"<?= $isStore ? ' aria-current="page"' : '' ?>>Loja</a>
                     <a href="./?secao=relatorios"<?= $isReport ? ' aria-current="page"' : '' ?>>Relatórios</a>
+                    <a href="./?secao=caixa"<?= $isCash ? ' aria-current="page"' : '' ?>>Caixa</a>
+                    <a href="./?secao=equipe"<?= $isTeam ? ' aria-current="page"' : '' ?>>Equipe</a>
                 <?php endif; ?>
             </nav>
             <?php if ($restrictedSection): ?>
                 <div class="admin-page-heading"><h1>Acesso restrito</h1></div>
                 <p class="admin-alert admin-alert-error" role="alert">Essa área está disponível para o responsável pela loja.</p>
+            <?php elseif ($isTeam || $isCash): ?>
+                <?php if ($flash): ?><p role="status" class="admin-alert"><?= escape($flash['text']) ?></p><?php endif; ?>
+                <?php if (!$databaseAvailable): ?><p role="alert">Dados temporariamente indisponíveis.</p>
+                <?php elseif ($isTeam): require __DIR__ . '/../../app/views/admin-team.php'; ?>
+                <?php else: require __DIR__ . '/../../app/views/admin-cash.php'; endif; ?>
             <?php elseif ($isReport): ?>
                 <?php require __DIR__ . '/../../app/views/admin-reports.php'; ?>
             <?php elseif ($isStore): ?>
@@ -373,6 +501,15 @@ $statusActions = [
             <?php if (!$databaseAvailable): ?>
                 <p class="admin-panel admin-empty" role="alert">Os pedidos estão indisponíveis. Tente atualizar em instantes.</p>
             <?php else: ?>
+                <form method="get" action="./" class="admin-panel report-filter" role="search">
+                    <label class="admin-editor-field">Código ou senha de retirada
+                        <input name="buscar" value="<?= escape($search) ?>" maxlength="24" required>
+                    </label>
+                    <label class="admin-editor-field">Dia da senha <input type="date" name="data_senha" value="<?= escape(validCashDate($ticketDate) ? $ticketDate : cashToday()) ?>"></label>
+                    <button class="admin-button admin-button-primary">Buscar pedido</button>
+                    <?php if ($search !== ''): ?><a href="./">Limpar busca</a><?php endif; ?>
+                </form>
+                <?php if ($searchError !== null): ?><p role="status" class="admin-alert"><?= escape($searchError) ?></p><?php endif; ?>
                 <nav class="admin-filters" aria-label="Filtrar pedidos por status">
                     <a href="./"<?= $filter === null ? ' aria-current="page"' : '' ?>>Todos</a>
                     <?php foreach ($statuses as $value => $label): ?>
@@ -382,10 +519,10 @@ $statusActions = [
 
                 <div class="admin-layout">
                     <section class="admin-panel admin-orders" aria-labelledby="orders-title">
-                        <h2 id="orders-title">Pedidos recentes</h2>
-                        <?php if (!$orders): ?>
+                        <h2 id="orders-title"><?= $search !== '' ? 'Resultado da busca' : 'Pedidos recentes' ?></h2>
+                        <?php if (!$orders && $searchError === null): ?>
                             <p class="admin-empty">Nenhum pedido encontrado<?= $filter !== null ? ' com esse status' : '' ?>.</p>
-                        <?php else: ?>
+                        <?php elseif ($orders): ?>
                             <ul class="admin-order-list">
                                 <?php foreach ($orders as $row): ?>
                                     <?php $placedAt = adminTime($row['created_at']); ?>
@@ -440,8 +577,10 @@ $statusActions = [
                             <dl class="admin-customer">
                                 <div><dt>Cliente</dt><dd><?= escape($order['customer_name']) ?></dd></div>
                                 <div><dt>Telefone</dt><dd><a href="tel:+55<?= escape($phone) ?>"><?= escape($formattedPhone) ?></a></dd></div>
-                                <div><dt>Entrega</dt><dd>Retirada na loja</dd></div>
-                                <div><dt>Pagamento</dt><dd>Na retirada</dd></div>
+                                <div><dt>Recebimento</dt><dd>Retirada na loja</dd></div>
+                                <div><dt>Pagamento</dt><dd><?= $payment
+                                    ? escape(paymentMethods()[$payment['method']] . ' · ' . adminTime($payment['received_at'])->format('d/m H:i'))
+                                    : ($order['status'] === 'completed' ? 'Sem lançamento de caixa' : 'Na retirada') ?></dd></div>
                             </dl>
 
                             <?php if ($order['notes'] !== ''): ?>
@@ -470,6 +609,7 @@ $statusActions = [
                                         <li>
                                             <strong><?= escape($statuses[$event['next_status']]) ?></strong>
                                             <span><?= escape($event['actor']) ?> · <time datetime="<?= $eventTime->format(DATE_ATOM) ?>"><?= $eventTime->format('d/m H:i') ?></time></span>
+                                            <?php if ($event['customer_reason'] !== ''): ?><p>Motivo para o cliente · <?= escape($event['customer_reason']) ?></p><?php endif; ?>
                                             <?php if ($event['reason'] !== ''): ?><p><?= escape($event['reason']) ?></p><?php endif; ?>
                                         </li>
                                     <?php endforeach; ?>
@@ -489,15 +629,31 @@ $statusActions = [
                                             <option value="<?= escape($next) ?>"><?= escape($statusActions[$next]) ?></option>
                                         <?php endforeach; ?>
                                     </select>
+                                    <?php if ($order['status'] === 'ready'): ?>
+                                        <label>Forma de pagamento na retirada
+                                            <select name="payment_method">
+                                                <option value="">Selecione</option>
+                                                <?php foreach (paymentMethods() as $key => $label): ?><option value="<?= $key ?>"><?= $label ?></option><?php endforeach; ?>
+                                            </select>
+                                        </label>
+                                    <?php endif; ?>
                                     <button class="admin-button admin-button-primary" type="submit">Atualizar status</button>
                                     <div class="admin-editor-field admin-editor-wide">
-                                        <label for="cancel-reason">Motivo de cancelamento <span>(ao cancelar)</span></label>
+                                        <label>Motivo para o cliente (ao cancelar)
+                                            <select name="customer_reason">
+                                                <option value="">Selecione um motivo</option>
+                                                <?php foreach (cancellationReasons() as $reasonLabel): ?>
+                                                    <option><?= escape($reasonLabel) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </label>
+                                        <label for="cancel-reason">Observação interna (opcional)</label>
                                         <input id="cancel-reason" name="cancel_reason" maxlength="240">
                                     </div>
                                 </form>
                             <?php endif; ?>
                         </section>
-                    <?php elseif ($code !== null): ?>
+                    <?php elseif ($code !== null && $search === ''): ?>
                         <p id="pedido-detalhe" class="admin-panel admin-empty">Pedido não encontrado.</p>
                     <?php endif; ?>
                 </div>

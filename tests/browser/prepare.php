@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../../bin/migrate.php';
+require_once __DIR__ . '/../../app/order-rate-limit.php';
 
 $name = databaseSetting('DB_NAME', '');
 if (!str_ends_with($name, '_test') && !str_starts_with($name, 'bh_test_')) {
@@ -15,10 +16,31 @@ if (($argv[1] ?? '') === '--cleanup') {
     if (!is_file($statePath)) exit(0);
     $state = json_decode(file_get_contents($statePath), true, 512, JSON_THROW_ON_ERROR);
     if ($state['database'] !== $name) throw new RuntimeException('O estado de E2E pertence a outro banco.');
-    $query = $db->prepare('UPDATE store_settings SET pickup_address=?,prep_minutes=?,paused=?,schedule=?,exceptions=? WHERE id=1');
+    $db->beginTransaction();
+    $ids = $db->prepare('SELECT orders.id,customer_phone,created_at FROM orders
+        JOIN order_items ON order_items.order_id=orders.id WHERE product_id=?');
+    $releaseQuota = $db->prepare('UPDATE order_rate_limits SET order_count=IF(order_count>0,order_count-1,0)
+        WHERE source_hash=? AND ? >= TIMESTAMPADD(SECOND, -' . ORDER_WINDOW_SECONDS . ', expires_at)');
+    $ids->execute([$state['productId']]);
+    foreach ($ids->fetchAll() as $order) {
+        $orderId = $order['id'];
+        $releaseQuota->execute([hash('sha256', "order-phone\0" . $order['customer_phone']), $order['created_at']]);
+        $releaseQuota->execute([hash('sha256', "order-origin\0" . inet_pton('127.0.0.1')), $order['created_at']]);
+        foreach (['payments', 'pickup_tickets', 'order_status_events', 'order_tracking', 'order_items'] as $table) {
+            $db->prepare("DELETE FROM {$table} WHERE order_id=?")->execute([$orderId]);
+        }
+        $db->prepare('DELETE FROM orders WHERE id=?')->execute([$orderId]);
+    }
+    $query = $db->prepare('UPDATE store_settings SET pickup_address=?,prep_minutes=?,paused=?,schedule=?,exceptions=?,revision=revision+1 WHERE id=1');
     $store = $state['store'];
     $query->execute([$store['pickup_address'],$store['prep_minutes'],$store['paused'],$store['schedule'],$store['exceptions']]);
     $db->prepare('DELETE FROM products WHERE id=?')->execute([$state['productId']]);
+    $owner = databaseSetting('ADMIN_USER', '');
+    if (!preg_match('/\Ae2e-[a-f0-9]{16}\z/', $owner)) throw new RuntimeException('Conta de teste inesperada.');
+    $db->prepare('DELETE FROM staff_accounts WHERE username LIKE ?')->execute(['op-' . $owner . '-%']);
+    $db->prepare('UPDATE cash_days SET closed_at=NULL,counted_cents=NULL,closed_by=NULL,revision=revision+1 WHERE closed_by=?')->execute([$owner]);
+    $db->prepare('DELETE FROM cash_events WHERE actor=?')->execute([$owner]);
+    $db->commit();
     unlink($statePath);
     echo 'Fixtures E2E removidas; loja restaurada.', PHP_EOL;
     exit(0);
