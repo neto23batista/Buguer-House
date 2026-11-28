@@ -104,9 +104,7 @@ foreach ($products as $product) {
 }
 $isDemo = presentationDemoMode();
 $contact = presentationContact();
-$description = $isDemo
-    ? 'Projeto de portfólio: explore o cardápio e experimente o fluxo de pedidos da Burger House com dados fictícios.'
-    : 'Smash burgers na chapa, fritas da casa e milk-shake. Explore o cardápio da Burger House e monte seu pedido.';
+$description = 'Cardápio Burger House. Escolha seu burger, confira a previsão e acompanhe a retirada no balcão.';
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -114,12 +112,14 @@ $description = $isDemo
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="<?= escape($description) ?>">
-    <meta name="theme-color" content="#fbf7ed">
+    <meta name="theme-color" content="#172923">
     <title>Burger House — Smash Burgers</title>
     <?php renderPresentationHead('Burger House — Smash Burgers', $description, true); ?>
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css')) ?>">
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/customer.css')) ?>">
     <script src="<?= escape(assetUrl('assets/js/app.js')) ?>" defer></script>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/accessibility.css')) ?>">
+    <script src="<?= escape(assetUrl('assets/js/accessibility.js')) ?>"></script>
 </head>
 <body class="customer storefront" id="inicio">
     <a class="skip-link" href="#cardapio">Pular para o cardápio</a>
@@ -133,27 +133,16 @@ $description = $isDemo
                 <a href="#cardapio">Cardápio</a>
                 <a href="#atendimento">Atendimento</a>
             </nav>
+            <?php require __DIR__ . '/../app/views/accessibility.php'; ?>
             <a class="cart-link" href="./?carrinho=1#carrinho" data-cart-open>
                 <span class="bag-icon" aria-hidden="true"></span>
-                <span>Carrinho</span>
+                <span class="cart-link-label">Carrinho</span>
                 <span class="cart-count" data-cart-count><?= $cart['count'] ?></span>
             </a>
         </div>
     </header>
 
     <main>
-        <?php if ($isDemo): ?>
-            <aside class="shell demo-notice" aria-label="Demonstração do projeto">
-                <strong>Projeto de portfólio</strong>
-                <p>Esta é uma demonstração da Burger House.
-                    <?php if ($storeStatus['accepting'] ?? false): ?>
-                        Explore o cardápio e teste o pedido com dados fictícios.
-                    <?php else: ?>
-                        Explore o cardápio e monte seu carrinho. O envio de pedidos de teste está indisponível no momento.
-                    <?php endif; ?>
-                    Nenhuma compra real será realizada.</p>
-            </aside>
-        <?php endif; ?>
         <dialog id="carrinho" class="cart-dialog<?= $cartPage ? ' is-page' : '' ?>" aria-labelledby="cart-title" <?= $cartPage ? 'open' : '' ?>>
             <div class="cart-heading">
                 <h2 id="cart-title">Seu carrinho</h2>
@@ -171,29 +160,23 @@ $description = $isDemo
 
         <section class="hero" aria-labelledby="hero-title">
             <div class="shell hero-inner">
+                <figure class="hero-photo">
+                    <img src="assets/img/hero.webp" alt="" width="1440" height="960" fetchpriority="high">
+                </figure>
                 <div class="hero-copy">
-                    <?php if ($storeStatus): ?>
-                        <p class="store-availability">
-                            <strong class="service-status" data-state="<?= escape($storeStatus['state']) ?>"><?= escape($storeStatus['label']) ?></strong>
-                            <span><?= escape($storeStatus['message']) ?></span>
-                        </p>
-                    <?php endif; ?>
-                    <h1 id="hero-title">Smash burger <span>na chapa</span></h1>
-                    <p class="hero-description">Pão brioche tostado, cheddar derretido e molho da casa.</p>
+                    <h1 id="hero-title">Smash burger<br><span>na chapa.</span></h1>
+                    <p class="hero-description">Escolha no cardápio e retire no balcão.</p>
                     <a class="primary-button" href="#cardapio">Ver cardápio <span aria-hidden="true">↓</span></a>
                 </div>
-                <figure class="hero-photo">
-                    <img src="assets/brand/balcao-640.webp"
-                         srcset="assets/brand/balcao-640.webp 640w, assets/brand/balcao-1280.webp 1280w"
-                         sizes="(max-width: 720px) 94vw, (max-width: 1200px) 51vw, 610px"
-                         alt="Uma pessoa serve dois hambúrgueres e fritas em uma bandeja"
-                         width="1280" height="853" fetchpriority="high">
-                </figure>
             </div>
         </section>
 
         <div class="shell pickup-strip">
+            <?php if ($storeStatus): ?>
+                <p class="store-availability"><strong class="service-status" data-state="<?= escape($storeStatus['state']) ?>"><?= escape($storeStatus['label']) ?></strong><span><?= escape($storeStatus['message']) ?></span></p>
+            <?php endif; ?>
             <p><strong>Retirada no balcão</strong><span><?= $store && $store['pickup_address'] !== '' ? escape($store['pickup_address']) : 'Pagamento na retirada' ?></span></p>
+            <?php if ($isDemo): ?><small class="test-mode">Pedidos de teste</small><?php endif; ?>
             <?php if ($lastOrder): ?>
                 <a class="pickup-order" href="checkout.php?pedido=<?= escape($lastOrder) ?>">Acompanhar pedido <span aria-hidden="true">→</span></a>
             <?php endif; ?>
@@ -201,7 +184,16 @@ $description = $isDemo
 
         <section class="shell menu" id="cardapio" aria-labelledby="menu-title" tabindex="-1">
             <div class="menu-heading">
-                <h2 id="menu-title">Cardápio</h2>
+                <h2 id="menu-title">Nosso cardápio</h2>
+                <?php if ($products): ?>
+                    <label class="menu-search" data-menu-search hidden>
+                        <span class="search-icon" aria-hidden="true"></span>
+                        <span class="visually-hidden">Buscar por produto ou ingrediente</span>
+                        <input type="search" placeholder="Buscar no cardápio" autocomplete="off" data-query>
+                    </label>
+                <?php endif; ?>
+            </div>
+            <div class="menu-toolbar">
                 <?php if ($products): ?>
                     <div class="filters" role="group" aria-label="Categorias do cardápio" data-filters hidden>
                         <button type="button" data-filter="todos" aria-pressed="true">Todos</button>
@@ -248,7 +240,8 @@ $description = $isDemo
                         </section>
                     <?php endforeach; ?>
                 </div>
-                <p class="menu-notice" role="status" data-filter-empty hidden>Nenhum produto nesta categoria.</p>
+                <p class="menu-notice" data-filter-empty hidden>Nenhum item encontrado. Tente outro nome ou categoria.</p>
+                <p class="visually-hidden" role="status" data-result-count></p>
             <?php endif; ?>
         </section>
 

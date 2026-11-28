@@ -17,7 +17,7 @@
 .kitchen-connection.is-offline { color: var(--admin-accent); }
 .kitchen-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 14px; }
 .kitchen-board > .admin-empty { grid-column: 1 / -1; }
-.kitchen-stage { --lane-color: var(--admin-accent); min-width: 0; border: 1px solid var(--admin-outline); border-radius: 6px; background: #f4ede2; }
+.kitchen-stage { --lane-color: var(--admin-accent); min-width: 0; border: 1px solid var(--admin-outline); border-radius: 6px; background: #eaf0e7; }
 .kitchen-stage-preparing { --lane-color: #765103; }
 .kitchen-stage-ready { --lane-color: #315940; }
 

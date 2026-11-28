@@ -6,8 +6,9 @@
     min-height: 68px;
 }
 
-.checkout-return { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; white-space: nowrap; color: var(--ink); font-size: .91rem; font-weight: 700; }
-.checkout-return:hover { color: var(--rust); }
+.checkout-return { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; white-space: nowrap; color: #fffaf0; font-size: .91rem; font-weight: 700; }
+.checkout-return:hover { color: #ffd06b; }
+.checkout-header .access-tools { margin-left: auto; }
 .checkout-main { max-width: 1040px; padding-block: clamp(32px, 5vw, 68px) 72px; }
 .checkout-intro { margin-bottom: 28px; }
 .checkout-main > .demo-notice { margin: 0 0 26px; padding: 13px 0 16px; }
@@ -15,7 +16,7 @@
 
 .checkout-main h1 {
     margin: 0;
-    font: 400 clamp(2.05rem, 5vw, 3.55rem) / 1.1 var(--customer-display, Georgia, serif);
+    font: 800 clamp(2.05rem, 5vw, 3.55rem) / 1.1 var(--customer-display, Georgia, serif);
     letter-spacing: -.035em;
     text-wrap: balance;
 }
@@ -35,10 +36,10 @@
     padding: clamp(16px, 3vw, 28px);
     background: var(--customer-surface, #fffdf7);
     border: 1px solid var(--line);
-    border-radius: 5px;
+    border-radius: 12px;
 }
 
-.checkout-card h2 { margin: 0 0 18px; font: 400 clamp(1.25rem, 2.7vw, 1.6rem) / 1.25 var(--customer-display, Georgia, serif); letter-spacing: -.02em; }
+.checkout-card h2 { margin: 0 0 18px; font: 800 clamp(1.25rem, 2.7vw, 1.6rem) / 1.25 var(--customer-display, Georgia, serif); letter-spacing: -.02em; }
 .customer-card { display: grid; gap: 16px; }
 .customer-card h2 { margin-bottom: 2px; }
 .checkout-field { display: grid; gap: 6px; }

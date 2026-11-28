@@ -208,7 +208,7 @@ if ($polling) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#fbf7ed">
+    <meta name="theme-color" content="#172923">
     <meta name="robots" content="noindex, nofollow">
     <title><?= $title ?> | Burger House</title>
     <?php renderPresentationHead($title . ' | Burger House', ''); ?>
@@ -217,24 +217,25 @@ if ($polling) {
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/checkout.css')) ?>">
     <?php if ($order): ?><script src="<?= escape(assetUrl('assets/js/tracking.js')) ?>" defer></script><?php endif; ?>
     <?php if ($draft && !$isReceipt): ?><script src="<?= escape(assetUrl('assets/js/checkout.js')) ?>" defer></script><?php endif; ?>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/accessibility.css')) ?>">
+    <script src="<?= escape(assetUrl('assets/js/accessibility.js')) ?>"></script>
 </head>
 <body class="customer checkout-page">
+    <a class="skip-link" href="#checkout-main">Pular para o pedido</a>
     <header class="site-header">
         <div class="shell checkout-header">
             <a class="brand" href="./" aria-label="Burger House — início">
                 <span class="brand-mark" aria-hidden="true"><i></i></span>
                 <span class="brand-name">BURGER <b>HOUSE</b></span>
             </a>
+            <?php require __DIR__ . '/../app/views/accessibility.php'; ?>
             <a class="checkout-return" href="./#cardapio"><span aria-hidden="true">←</span> Cardápio</a>
         </div>
     </header>
 
-    <main class="shell checkout-main">
+    <main class="shell checkout-main" id="checkout-main" tabindex="-1">
         <?php if ($isDemo): ?>
-            <aside class="demo-notice" aria-label="Demonstração do projeto">
-                <strong>Pedido de demonstração</strong>
-                <p>Este projeto faz parte de um portfólio. Use dados fictícios: por exemplo, Cliente Demo e (11) 90000-0000. Nenhuma compra real será realizada.</p>
-            </aside>
+            <aside class="demo-notice" aria-label="Ambiente de teste"><strong>Pedido de teste</strong> · Use dados fictícios. Nenhuma compra será realizada.</aside>
         <?php endif; ?>
         <?php if ($unavailable): ?>
             <div class="checkout-state checkout-card">
@@ -310,7 +311,6 @@ if ($polling) {
                 <input type="hidden" name="checkout_token" value="<?= escape($draft['token']) ?>">
                 <section class="checkout-card customer-card" aria-labelledby="customer-title">
                     <h2 id="customer-title">Seus dados</h2>
-                    <?php if ($isDemo): ?><p class="demo-fields-hint">Preencha somente dados fictícios para testar.</p><?php endif; ?>
                     <div class="checkout-field">
                         <label for="customer-name">Nome</label>
                         <input id="customer-name" name="name" required maxlength="100" autocomplete="<?= $isDemo ? 'off' : 'name' ?>" value="<?= escape($customer['name']) ?>" <?= isset($errors['name']) ? 'aria-invalid="true" aria-describedby="name-error"' : '' ?>>

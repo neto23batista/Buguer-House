@@ -398,11 +398,13 @@ $statusActions = [
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#fbf7ed">
+    <meta name="theme-color" content="#172923">
     <title><?= $isLoggedIn ? escape($sectionTitle) : 'Painel administrativo' ?> — Burger House</title>
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css', '../')) ?>">
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/admin.css', '../')) ?>">
     <?php if ($isStore): ?><link rel="stylesheet" href="<?= escape(assetUrl('assets/css/store.css', '../')) ?>"><?php endif; ?>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/accessibility.css', '../')) ?>">
+    <script src="<?= escape(assetUrl('assets/js/accessibility.js', '../')) ?>"></script>
 </head>
 <body class="admin-body">
     <a class="skip-link" href="#admin-main">Pular para o conteúdo</a>
@@ -413,6 +415,7 @@ $statusActions = [
                 <span class="brand-name">BURGER <b>HOUSE</b></span>
             </a>
             <nav class="admin-header-actions" aria-label="Painel administrativo">
+                <?php require __DIR__ . '/../../app/views/accessibility.php'; ?>
                 <a href="../">Ver loja <span aria-hidden="true">↗</span></a>
                 <?php if ($isLoggedIn): ?>
                     <form action="./" method="post">

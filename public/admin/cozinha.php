@@ -99,12 +99,14 @@ if ($isFeed) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#fbf7ed">
+    <meta name="theme-color" content="#172923">
     <title>Cozinha — Burger House</title>
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/style.css', '../')) ?>">
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/admin.css', '../')) ?>">
     <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/kitchen.css', '../')) ?>">
     <script src="<?= escape(assetUrl('assets/js/kitchen.js', '../')) ?>" defer></script>
+    <link rel="stylesheet" href="<?= escape(assetUrl('assets/css/accessibility.css', '../')) ?>">
+    <script src="<?= escape(assetUrl('assets/js/accessibility.js', '../')) ?>"></script>
 </head>
 <body class="admin-body">
     <a class="skip-link" href="#kitchen-main">Pular para o conteúdo</a>
@@ -115,6 +117,7 @@ if ($isFeed) {
                 <span class="brand-name">BURGER <b>HOUSE</b></span>
             </a>
             <nav class="admin-header-actions" aria-label="Painel administrativo">
+                <?php require __DIR__ . '/../../app/views/accessibility.php'; ?>
                 <a href="../">Ver loja <span aria-hidden="true">↗</span></a>
                 <form action="./" method="post">
                     <input type="hidden" name="action" value="logout">

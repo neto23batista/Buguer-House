@@ -271,19 +271,41 @@ const menuSections = document.querySelectorAll('[data-category]');
 const emptyFilter = document.querySelector('[data-filter-empty]');
 const filterControls = document.querySelector('[data-filters]');
 
+const search = document.querySelector('[data-menu-search]');
+const queryInput = search?.querySelector('[data-query]');
+const results = document.querySelector('[data-result-count]');
+let category = 'todos';
+
+function normalizeSearch(value) {
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function filterMenu() {
+    const query = normalizeSearch(queryInput?.value ?? '');
+    let count = 0;
+    menuSections.forEach((section) => {
+        const matchesCategory = category === 'todos' || section.dataset.category === category;
+        let visible = 0;
+        section.querySelectorAll('.product').forEach((product) => {
+            const name = product.querySelector('h4').textContent;
+            const description = product.querySelector('.product-body > p').textContent;
+            product.hidden = !matchesCategory || !normalizeSearch(name + ' ' + description).includes(query);
+            if (!product.hidden) visible++;
+        });
+        section.hidden = visible === 0;
+        count += visible;
+    });
+    if (emptyFilter) emptyFilter.hidden = count > 0;
+    if (results) results.textContent = count === 1 ? '1 item encontrado.' : count + ' itens encontrados.';
+}
+
 filters.forEach((button) => {
     button.addEventListener('click', () => {
-        const category = button.dataset.filter;
-        let hasVisibleProducts = false;
-
+        category = button.dataset.filter;
         filters.forEach((filter) => filter.setAttribute('aria-pressed', String(filter === button)));
-        menuSections.forEach((section) => {
-            section.hidden = category !== 'todos' && section.dataset.category !== category;
-            hasVisibleProducts ||= !section.hidden;
-        });
-
-        if (emptyFilter) emptyFilter.hidden = hasVisibleProducts;
+        filterMenu();
     });
 });
-
+queryInput?.addEventListener('input', filterMenu);
+if (search) search.hidden = false;
 if (filterControls && filters.length) filterControls.hidden = false;
