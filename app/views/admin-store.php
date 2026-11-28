@@ -23,6 +23,12 @@
     }
     ?>
 
+    <?php if (!empty($readiness)): ?>
+        <section class="admin-panel admin-detail" aria-labelledby="store-readiness">
+            <h2 id="store-readiness">Falta para receber pedidos</h2>
+            <ul><?php foreach ($readiness as $item): ?><li><?= escape($item) ?></li><?php endforeach; ?></ul>
+        </section>
+    <?php endif; ?>
     <form class="store-form" method="post" action="./?secao=loja">
         <input type="hidden" name="csrf" value="<?= escape($adminCsrf) ?>">
         <input type="hidden" name="action" value="save_store">
@@ -30,7 +36,7 @@
 
         <section class="admin-panel store-panel store-profile" aria-labelledby="store-profile-title">
             <h2 id="store-profile-title">Retirada e atendimento</h2>
-            <p class="store-hint">Antes de liberar novos pedidos, informe o endereço de retirada e confira os horários. Uma loja sem endereço não aceita pedidos.</p>
+            <p class="store-hint">O último pedido precisa ficar pronto até o fim do turno. O prazo de preparo define o horário limite.</p>
             <div class="admin-editor-field">
                 <label for="store-address">Endereço de retirada</label>
                 <input id="store-address" name="pickup_address" maxlength="250"

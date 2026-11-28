@@ -50,7 +50,6 @@
 .service-status { display: inline-flex; align-items: center; gap: 7px; color: #71420d; }
 .service-status[data-state="open"] { color: #23563c; }
 .service-status::before { content: ""; width: 9px; height: 9px; background: currentColor; border-radius: 50%; }
-.test-mode { margin-left: auto; font-size: .8rem; color: var(--muted); }
 .pickup-order { gap: 7px; color: var(--rust); }
 .menu { padding-block: clamp(26px, 3.3vw, 48px) 55px; scroll-margin-top: 80px; }
 .menu-heading { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
@@ -103,9 +102,6 @@
 .footer-contact:hover, .footer-top:hover { text-decoration: underline; text-underline-offset: 3px; }
 .footer-top span { margin-left: 5px; }
 
-.demo-notice { padding-block: 14px; border-bottom: 1px solid var(--line); font-size: .88rem; }
-.demo-notice strong { color: var(--rust); }
-.demo-notice p { max-width: 85ch; margin: 3px 0 0; color: var(--muted); }
 .store-details {
     display: grid;
     grid-template-columns: minmax(0, .89fr) minmax(0, 1.11fr);

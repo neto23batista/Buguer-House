@@ -68,10 +68,6 @@ function placeOrder(
     $db->beginTransaction();
     try {
         $store = loadStore($db, true);
-        $availability = storeAvailability($store);
-        if (!$availability['accepting']) {
-            throw new DomainException($availability['message']);
-        }
         if ($expectedPrepMinutes !== null && $store['prep_minutes'] !== $expectedPrepMinutes) {
             throw new DomainException('O prazo de preparo mudou. Confira a nova previsão antes de confirmar.');
         }
@@ -104,6 +100,11 @@ function placeOrder(
         if ($cart['count'] > MAX_ORDER_ITEMS) {
             throw new OrderRateLimitException('O limite é de ' . MAX_ORDER_ITEMS . ' unidades por pedido. Ajuste o carrinho para continuar.');
         }
+        $confirmedAt = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+        $availability = storeAvailability($store, $confirmedAt);
+        if (!$availability['accepting']) {
+            throw new DomainException($availability['message']);
+        }
         consumeOrderQuota($db, $customer['phone'], $clientAddress);
 
         $publicCode = strtoupper(bin2hex(random_bytes(8)));
@@ -123,7 +124,7 @@ function placeOrder(
             $product = $item['product'];
             $insertItem->execute([$orderId, $product['id'], $product['name'], $product['price_cents'], $item['quantity']]);
         }
-        saveOrderTracking($db, $orderId, $checkoutToken, $store);
+        saveOrderTracking($db, $orderId, $checkoutToken, $store, $confirmedAt);
 
         $order = findOrder($db, $publicCode);
         if ($order === null) {

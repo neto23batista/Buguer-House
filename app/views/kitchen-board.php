@@ -58,6 +58,7 @@ $utc = new DateTimeZone('UTC');
                         <input type="hidden" name="expected_status" value="<?= $stage ?>">
                         <input type="hidden" name="next_status" value="<?= $next ?>">
                         <?php if ($stage === 'ready'): ?>
+                            <p><strong>Total a cobrar · <?= price($order['total_cents']) ?></strong></p>
                             <label>Forma de pagamento na retirada
                                 <select name="payment_method" required>
                                     <option value="">Selecione</option>

@@ -84,6 +84,6 @@ test('checkout informa envio, impede duplicação e restaura controles ao voltar
     await expect(page.getByRole('heading', { name: 'Resposta E2E' })).toBeVisible();
     await page.goBack();
     await expect(page.locator('[data-submit-order]')).toBeEnabled();
-    await expect(page.locator('[data-submit-order]')).toContainText('Enviar pedido de teste');
+    await expect(page.locator('[data-submit-order]')).toContainText('Enviar pedido');
     await expect(page.locator('[data-checkout-progress]')).toBeHidden();
 });

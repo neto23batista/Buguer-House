@@ -357,6 +357,10 @@
 }
 
 .admin-editor-field textarea { resize: vertical; }
+.cash-payment { padding: .8rem 0; border-top: 1px solid var(--admin-outline); overflow-wrap: anywhere; }
+.cash-payment summary { cursor: pointer; }
+.cash-correction { display: grid; gap: .65rem; max-width: 32rem; }
+.cash-correction button { justify-self: start; }
 .admin-editor-field [aria-invalid="true"] { border-color: #b74833; }
 .admin-field-error { margin: 0; color: #8b271a; font-size: .82rem; }
 .admin-editor-availability { align-self: end; }

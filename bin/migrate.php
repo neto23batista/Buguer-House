@@ -21,6 +21,7 @@ function migrationManifest(): array
         '011_customer_reason' => 'customer-reason.sql',
         '012_operations' => 'operations.sql',
         '013_pickup_tickets' => 'pickup-tickets.sql',
+        '014_payment_method_changes' => 'payment-method-changes.sql',
     ];
 }
 
@@ -105,6 +106,34 @@ function migrationSqlForServer(string $statement, string $serverVersion): string
     return preg_replace('/\bDEFAULT\s*\(\s*UTC_TIMESTAMP\s*\(\s*\)\s*\)/i', 'DEFAULT CURRENT_TIMESTAMP', $statement);
 }
 
+/** Validate every historical checksum before running any pending SQL. */
+function pendingMigrations(PDO $db): array
+{
+    $applied = $db->query('SELECT migration, checksum FROM schema_migrations')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $pending = [];
+    foreach (migrationManifest() as $migration => $file) {
+        $sql = file_get_contents(__DIR__ . '/../database/' . $file);
+        if ($sql === false) {
+            throw new RuntimeException('Migração ausente: ' . $file);
+        }
+        $checksum = hash('sha256', str_replace("\r\n", "\n", $sql));
+        if (!isset($applied[$migration])) {
+            $pending[$migration] = ['checksum' => $checksum, 'statements' => migrationStatements($sql)];
+        } elseif (!hash_equals($applied[$migration], $checksum)) {
+            throw new RuntimeException('Migração já aplicada foi alterada: ' . $file . '. Restaure o arquivo e crie uma nova migração.');
+        }
+    }
+    return $pending;
+}
+
+function checkMigrations(PDO $db): void
+{
+    $pending = pendingMigrations($db);
+    if ($pending) {
+        throw new RuntimeException('Migrações pendentes: ' . implode(', ', array_keys($pending)) . '.');
+    }
+}
+
 /** @return array{applied:list<string>, skipped:list<string>} */
 function runMigrations(PDO $db, ?callable $log = null): array
 {
@@ -132,25 +161,9 @@ function runMigrations(PDO $db, ?callable $log = null): array
                 applied_at DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP())
              ) ENGINE=InnoDB', $serverVersion,
         ));
-        $applied = $db->query('SELECT migration, checksum FROM schema_migrations')->fetchAll(PDO::FETCH_KEY_PAIR);
+        $pending = pendingMigrations($db);
+        $result['skipped'] = array_keys(array_diff_key(migrationManifest(), $pending));
         $insert = $db->prepare('INSERT INTO schema_migrations (migration, checksum) VALUES (?, ?)');
-        $pending = [];
-        // Validate all historical checksums before making any further schema/data change.
-        foreach (migrationManifest() as $migration => $file) {
-            $sql = file_get_contents(__DIR__ . '/../database/' . $file);
-            if ($sql === false) {
-                throw new RuntimeException('Migração ausente: ' . $file);
-            }
-            $checksum = hash('sha256', str_replace("\r\n", "\n", $sql));
-            if (isset($applied[$migration])) {
-                if (!hash_equals($applied[$migration], $checksum)) {
-                    throw new RuntimeException('Migração já aplicada foi alterada: ' . $file . '. Restaure o arquivo e crie uma nova migração.');
-                }
-                $result['skipped'][] = $migration;
-                continue;
-            }
-            $pending[$migration] = ['checksum' => $checksum, 'statements' => migrationStatements($sql)];
-        }
         foreach ($pending as $migration => $details) {
             // MySQL DDL commits implicitly. Each file must be safe to resume after partial failure.
             foreach ($details['statements'] as $statement) {
@@ -171,6 +184,14 @@ function runMigrations(PDO $db, ?callable $log = null): array
 
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     try {
+        if (array_slice($argv, 1) === ['--check']) {
+            checkMigrations(databaseConnection());
+            echo 'Todas as migrações desta versão estão aplicadas e conferidas.', PHP_EOL;
+            exit(0);
+        }
+        if (count($argv) !== 1) {
+            throw new InvalidArgumentException('Uso: php bin/migrate.php [--check]');
+        }
         $result = runMigrations(databaseConnection(), static fn (string $message) => print($message . PHP_EOL));
         echo count($result['applied']), ' aplicada(s), ', count($result['skipped']), ' já registrada(s).', PHP_EOL;
     } catch (Throwable $exception) {

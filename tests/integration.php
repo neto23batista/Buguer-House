@@ -153,6 +153,17 @@ try {
     $reapplied = runMigrations($db);
     testSame([], $reapplied['applied'], 'migrações podem ser executadas novamente sem reaplicar dados');
     testSame(count(migrationManifest()), count($reapplied['skipped']), 'todas as migrações possuem registro e checksum');
+    checkMigrations($db);
+    $db->beginTransaction();
+    try {
+        $db->exec("UPDATE schema_migrations SET checksum=REPEAT('0',64) WHERE migration='014_payment_method_changes'");
+        testThrows(fn () => checkMigrations($db), RuntimeException::class, 'publicação recusa checksum divergente', 'alterada');
+        $db->exec("DELETE FROM schema_migrations WHERE migration='014_payment_method_changes'");
+        testThrows(fn () => checkMigrations($db), RuntimeException::class, 'publicação recusa migração ausente', '014_payment_method_changes');
+        testSame(0, (int) $db->query("SELECT COUNT(*) FROM schema_migrations WHERE migration='014_payment_method_changes'")->fetchColumn(), 'checagem não aplica migrações');
+    } finally {
+        $db->rollBack();
+    }
     $indexes = $db->query("SELECT COUNT(DISTINCT INDEX_NAME) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='orders' AND INDEX_NAME IN ('idx_orders_created_at','idx_orders_status_created')")->fetchColumn();
     testSame(2, (int) $indexes, 'índices dos relatórios estão presentes');
 
@@ -247,6 +258,17 @@ try {
         DomainException::class, 'retirada sem pagamento preserva o status pronto', 'forma de pagamento');
     testAssert(changeKitchenOrderStatus($db, $order['id'], 'ready', 'completed', 'integration-' . $suffix, '', '', 'pix'), 'pedido é concluído');
     testSame('pix', orderTrackingDetails($db, $order['public_code'])['payment_method'], 'recibo preserva forma de pagamento');
+    $cashDate = cashToday();
+    $beforeCorrection = cashReport($db, $cashDate);
+    $correction = ['order_id' => $order['id'], 'revision' => 0, 'payment_method' => 'cash', 'reason' => 'Conferido no balcão'];
+    correctPaymentMethod($db, $cashDate, 'dono', $correction);
+    $afterCorrection = cashReport($db, $cashDate);
+    testSame($beforeCorrection['totals']['pix'] - 5000, $afterCorrection['totals']['pix'], 'correção retira o valor do meio anterior');
+    testSame($beforeCorrection['totals']['cash'] + 5000, $afterCorrection['totals']['cash'], 'correção soma o valor no novo meio');
+    testSame(array_sum($beforeCorrection['totals']), array_sum($afterCorrection['totals']), 'correção preserva total do dia');
+    testSame('dono', $afterCorrection['changes'][$order['id']][0]['actor'], 'extrato registra responsável pela correção');
+    testSame('cash', orderTrackingDetails($db, $order['public_code'])['payment_method'], 'recibo reflete a correção');
+    testThrows(fn () => correctPaymentMethod($db, $cashDate, 'dono', $correction), DomainException::class, 'segunda aba com versão antiga recebe conflito', 'mudou');
     testAssert(!changeKitchenOrderStatus($db, $order['id'], 'completed', 'preparing', 'integration-' . $suffix), 'estado final não reabre pedido');
     testSame(2500, listOrderItems($db, $order['id'])[0]['unit_price_cents'], 'itens mantêm o preço original da compra');
     $reportAfter = orderReport($db, $reportBounds)['totals'];
@@ -325,7 +347,7 @@ try {
                 $orderIds = $db->query('SELECT DISTINCT order_id FROM order_items WHERE product_id=' . $productId)->fetchAll(PDO::FETCH_COLUMN);
                 if ($orderIds !== []) {
                     $ids = implode(',', array_map('intval', $orderIds));
-                    foreach (['payments', 'pickup_tickets', 'order_tracking', 'order_status_events', 'order_items'] as $table) {
+                    foreach (['payment_method_changes', 'payments', 'pickup_tickets', 'order_tracking', 'order_status_events', 'order_items'] as $table) {
                         $db->exec('DELETE FROM ' . $table . ' WHERE order_id IN (' . $ids . ')');
                     }
                     $db->exec('DELETE FROM orders WHERE id IN (' . $ids . ')');

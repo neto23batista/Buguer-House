@@ -59,6 +59,7 @@ test('pedido, revisão de prazo, senha, cozinha, recebimento e fechamento de cai
         await expect(card).toContainText('Retirada prevista');
         await card.getByRole('button', {name:'Iniciar preparo'}).click();
         await card.getByRole('button', {name:'Marcar como pronto'}).click();
+        await expect(card).toContainText('Total a cobrar · R$ 38,00');
         await card.locator('[name=payment_method]').selectOption('cash');
         await card.getByRole('button', {name:'Concluir retirada'}).click();
         await expect(card).toHaveCount(0);
@@ -73,14 +74,61 @@ test('pedido, revisão de prazo, senha, cozinha, recebimento e fechamento de cai
         await admin.goto('/admin/?secao=caixa');
         const cash = admin.locator('.report-metrics div').filter({hasText:'Dinheiro'}).locator('dd');
         const amount = (await cash.textContent()).replace(/[^0-9,]/g,'');
-        expect(Number(amount.replace(',','.'))).toBeGreaterThanOrEqual(12.34);
+        expect(Number(amount.replace(',','.'))).toBeGreaterThanOrEqual(38);
         await admin.locator('[name=counted]').fill(amount);
         await admin.getByRole('button', {name:'Fechar caixa'}).click();
         await expect(admin.getByText(/Diferença/)).toContainText('+R$ 0,00');
+        const entry = tab => tab.locator('.cash-payment').filter({hasText:code});
+        await entry(admin).locator('summary').click();
+        await expect(entry(admin)).toContainText('Reabra o caixa');
+        await expect(entry(admin).getByRole('button', {name:'Corrigir recebimento'})).toHaveCount(0);
         await admin.getByRole('button', {name:'Reabrir caixa'}).click();
-        await expect(admin.getByRole('button', {name:'Fechar caixa'})).toBeVisible();
+        await cashTab.reload();
+        for (const tab of [admin, cashTab]) {
+            await entry(tab).locator('summary').click();
+            await entry(tab).getByLabel('Nova forma de pagamento').selectOption('pix');
+            await entry(tab).getByLabel('Motivo da correção').fill('Comprovante Pix conferido');
+        }
+        const totalsInCents = async tab => (await tab.locator('.report-metrics dd').allTextContents())
+            .map(value => Number(value.replace(/\D/g, '')));
+        const [cashBefore, pixBefore, cardBefore, totalBefore] = await totalsInCents(admin);
+        await entry(admin).getByRole('button', {name:'Corrigir recebimento'}).click();
+        await expect(admin.getByRole('status')).toContainText('corrigida');
+        expect(await totalsInCents(admin)).toEqual([cashBefore - 3800, pixBefore + 3800, cardBefore, totalBefore]);
+        await entry(cashTab).getByRole('button', {name:'Corrigir recebimento'}).click();
+        await expect(cashTab.getByRole('alert')).toContainText('recebimento mudou');
+        await entry(admin).locator('summary').click();
+        await expect(entry(admin)).toContainText('Dinheiro → Pix');
+        await expect(entry(admin)).toContainText('Comprovante Pix conferido');
+        await page.reload();
+        await expect(page.locator('[data-receipt-status]')).toContainText('Pagamento recebido · Pix');
     } finally {
         await adminContext.close();
+    }
+});
+
+test('fim do atendimento durante o checkout conserva o carrinho e mostra a próxima abertura', async ({page, browser}) => {
+    await checkout(page);
+    const admin = await browser.newPage();
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    try {
+        await login(admin);
+        await admin.goto('/admin/?secao=loja');
+        await admin.locator('[name="exceptions[0][date]"]').fill(today);
+        await admin.getByRole('button', {name:'Salvar configurações'}).click();
+        await expect(admin.getByRole('status').filter({hasText:'Configurações salvas'})).toBeVisible();
+        await page.locator('[data-submit-order]').click();
+        await expect(page.getByText(/Próxima abertura em/)).toBeVisible();
+        await page.getByRole('link', {name:'Voltar ao carrinho'}).click();
+        await expect(page.locator('#cart-content')).toContainText('Produto E2E');
+        await expect(page.locator('#cart-content')).toContainText('R$ 38,00');
+    } finally {
+        const remove = admin.locator('[name="exceptions[0][remove]"]');
+        if (await remove.isVisible()) {
+            await remove.check();
+            await admin.getByRole('button', {name:'Salvar configurações'}).click();
+        }
+        await admin.close();
     }
 });
 
@@ -117,7 +165,7 @@ test('pausa, cadastros em duas abas e foto persistida', async ({page,context,bro
         await other.locator('#product-price').fill('75,00');
         await other.getByRole('button', {name:'Salvar produto'}).click();
         await expect(other.getByRole('alert')).toContainText('cadastro mudou');
-        await expect(other.locator('#product-price')).toHaveValue('12,34');
+        await expect(other.locator('#product-price')).toHaveValue('38,00');
     } finally {
         await customer.close();
     }

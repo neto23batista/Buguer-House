@@ -65,7 +65,7 @@ function listOrderStatusEvents(PDO $db, int $id): array
 function listKitchenOrders(PDO $db): array
 {
     $rows = $db->query(
-        "SELECT orders.id, orders.public_code, orders.status, orders.notes, orders.created_at,
+        "SELECT orders.id, orders.public_code, orders.status, orders.notes, orders.created_at, orders.total_cents,
                 ticket.ticket_number, ticket.pickup_day, tracking.pickup_at, order_items.quantity, order_items.product_name
          FROM orders
          LEFT JOIN pickup_tickets AS ticket ON ticket.order_id=orders.id
@@ -87,6 +87,7 @@ function listKitchenOrders(PDO $db): array
             'ticket_number' => $row['ticket_number'],
             'pickup_day' => $row['pickup_day'],
             'created_at' => $row['created_at'],
+            'total_cents' => (int) $row['total_cents'],
             'items' => [],
         ];
         if ($row['product_name'] !== null) {

@@ -178,11 +178,15 @@ if (!$isConfigured) {
         } catch (PDOException $error) {
             adminRedirect($sectionUrl, 'Não foi possível atualizar a conta.', true);
         }
-    } elseif ($isCash && in_array($action, ['cash_close', 'cash_reopen'], true)) {
+    } elseif ($isCash && in_array($action, ['cash_close', 'cash_reopen', 'cash_correct'], true)) {
         $date = $_POST['business_date'] ?? null;
         if (!validCashDate($date)) adminRedirect($sectionUrl, 'Data inválida.', true);
         $destination = $sectionUrl . '&dia=' . $date;
         try {
+            if ($action === 'cash_correct') {
+                correctPaymentMethod(databaseConnection(), $date, $adminUser, $_POST);
+                adminRedirect($destination, 'Forma de pagamento corrigida.');
+            }
             settleCash(databaseConnection(), $date, $adminUser, $_POST);
             adminRedirect($destination, $action === 'cash_close' ? 'Caixa fechado.' : 'Caixa reaberto.');
         } catch (DomainException $error) {
@@ -321,7 +325,19 @@ if ($isLoggedIn && !$restrictedSection) {
                 http_response_code(422);
             }
         } elseif ($isStore) {
-            $storeSettings ??= loadStore($db);
+            $savedStore = loadStore($db);
+            $storeSettings ??= $savedStore;
+            $readiness = [];
+            if ($savedStore['pickup_address'] === '') {
+                $readiness[] = 'Informe o endereço de retirada.';
+            }
+            $savedHours = storeHoursAvailability($savedStore);
+            if (!$savedHours['accepting'] && $savedHours['next_open'] === null) {
+                $readiness[] = 'Cadastre um turno com tempo suficiente para preparar um pedido.';
+            }
+            if (!$db->query('SELECT 1 FROM products WHERE is_active = 1 LIMIT 1')->fetchColumn()) {
+                $readiness[] = 'Ative ao menos um produto no cardápio.';
+            }
         } elseif ($isCatalog) {
             $catalogProducts = adminProducts($db);
             $catalogImages = adminProductImages();
@@ -357,7 +373,7 @@ if ($isLoggedIn && !$restrictedSection) {
             if ($order !== null) {
                 $items = listOrderItems($db, (int) $order['id']);
                 if ($order['status'] === 'completed') {
-                    $paymentQuery = $db->prepare('SELECT method,received_at FROM payments WHERE order_id=?');
+                    $paymentQuery = $db->prepare('SELECT ' . EFFECTIVE_PAYMENT_METHOD_SQL . ' AS method, received_at FROM payments payment WHERE order_id=?');
                     $paymentQuery->execute([$order['id']]);
                     $payment = $paymentQuery->fetch();
                 }
@@ -468,7 +484,7 @@ $statusActions = [
                 <div class="admin-page-heading"><h1>Acesso restrito</h1></div>
                 <p class="admin-alert admin-alert-error" role="alert">Essa área está disponível para o responsável pela loja.</p>
             <?php elseif ($isTeam || $isCash): ?>
-                <?php if ($flash): ?><p role="status" class="admin-alert"><?= escape($flash['text']) ?></p><?php endif; ?>
+                <?php if ($flash): ?><p role="<?= $flash['error'] ? 'alert' : 'status' ?>" class="admin-alert<?= $flash['error'] ? ' admin-alert-error' : '' ?>"><?= escape($flash['text']) ?></p><?php endif; ?>
                 <?php if (!$databaseAvailable): ?><p role="alert">Dados temporariamente indisponíveis.</p>
                 <?php elseif ($isTeam): require __DIR__ . '/../../app/views/admin-team.php'; ?>
                 <?php else: require __DIR__ . '/../../app/views/admin-cash.php'; endif; ?>

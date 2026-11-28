@@ -26,7 +26,7 @@ if (($argv[1] ?? '') === '--cleanup') {
         $orderId = $order['id'];
         $releaseQuota->execute([hash('sha256', "order-phone\0" . $order['customer_phone']), $order['created_at']]);
         $releaseQuota->execute([hash('sha256', "order-origin\0" . inet_pton('127.0.0.1')), $order['created_at']]);
-        foreach (['payments', 'pickup_tickets', 'order_status_events', 'order_tracking', 'order_items'] as $table) {
+        foreach (['payment_method_changes', 'payments', 'pickup_tickets', 'order_status_events', 'order_tracking', 'order_items'] as $table) {
             $db->prepare("DELETE FROM {$table} WHERE order_id=?")->execute([$orderId]);
         }
         $db->prepare('DELETE FROM orders WHERE id=?')->execute([$orderId]);
@@ -51,7 +51,7 @@ $store = $db->query('SELECT pickup_address,prep_minutes,paused,schedule,exceptio
 $db->beginTransaction();
 try {
     $insert = $db->prepare("INSERT INTO products(slug,name,description,category,price_cents,image,image_alt,sort_order,is_active)
-        VALUES (?,?,'Produto exclusivo dos testes de navegador','burgers',1234,'','',0,1)");
+        VALUES (?,?,'Produto exclusivo dos testes de navegador','burgers',3800,'','',0,1)");
     $insert->execute(['e2e-' . bin2hex(random_bytes(12)), 'Produto E2E']);
     $productId = (int) $db->lastInsertId();
     $schedule = array_fill(1, 7, [['00:00', '24:00']]);

@@ -102,7 +102,6 @@ $menuGroups = [];
 foreach ($products as $product) {
     $menuGroups[$product['category']][] = $product;
 }
-$isDemo = presentationDemoMode();
 $contact = presentationContact();
 $description = 'Cardápio Burger House. Escolha seu burger, confira a previsão e acompanhe a retirada no balcão.';
 ?>
@@ -176,7 +175,6 @@ $description = 'Cardápio Burger House. Escolha seu burger, confira a previsão 
                 <p class="store-availability"><strong class="service-status" data-state="<?= escape($storeStatus['state']) ?>"><?= escape($storeStatus['label']) ?></strong><span><?= escape($storeStatus['message']) ?></span></p>
             <?php endif; ?>
             <p><strong>Retirada no balcão</strong><span><?= $store && $store['pickup_address'] !== '' ? escape($store['pickup_address']) : 'Pagamento na retirada' ?></span></p>
-            <?php if ($isDemo): ?><small class="test-mode">Pedidos de teste</small><?php endif; ?>
             <?php if ($lastOrder): ?>
                 <a class="pickup-order" href="checkout.php?pedido=<?= escape($lastOrder) ?>">Acompanhar pedido <span aria-hidden="true">→</span></a>
             <?php endif; ?>

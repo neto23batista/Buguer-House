@@ -2,11 +2,6 @@
 
 declare(strict_types=1);
 
-function presentationDemoMode(): bool
-{
-    return getenv('APP_DEMO') === '1';
-}
-
 function presentationBaseUrl(): ?string
 {
     $url = trim((string) getenv('APP_URL'));

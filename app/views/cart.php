@@ -73,6 +73,9 @@
             <p role="status"><?= escape($storeStatus['message'] ?? 'Não foi possível consultar a disponibilidade da loja.') ?></p>
             <a href="./?carrinho=1#carrinho">Consultar disponibilidade</a>
         <?php elseif ($cart['count'] <= MAX_ORDER_ITEMS): ?>
+            <?php if (!empty($storeStatus['last_order_label'])): ?>
+                <p>Último pedido do turno às <?= escape($storeStatus['last_order_label']) ?>.</p>
+            <?php endif; ?>
             <a class="primary-button" href="checkout.php" data-checkout>Finalizar pedido <span aria-hidden="true">→</span></a>
         <?php else: ?>
             <p role="alert">Diminua as quantidades para finalizar o pedido.</p>

@@ -22,7 +22,7 @@ if (path.dirname(directory) !== temporaryRoot || !path.basename(directory).start
     throw new Error('Diretório temporário E2E inesperado.');
 }
 const statePath = path.join(directory, 'state.json');
-const env = { ...process.env, APP_ENV: 'test', APP_DEMO: '1', VERCEL: '0',
+const env = { ...process.env, APP_ENV: 'test', VERCEL: '0',
     DB_HOST: host, DB_PORT: port, DB_NAME: name,
     DB_USER: process.env.DB_TEST_USER ?? 'root', DB_PASSWORD: process.env.DB_TEST_PASSWORD ?? '',
     DB_SSL_REQUIRED: '0', DB_SSL_CA: '', DB_SSL_CA_BASE64: '',

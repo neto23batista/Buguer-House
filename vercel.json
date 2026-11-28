@@ -1,4 +1,7 @@
 {
+  "git": {
+    "deploymentEnabled": { "main": false }
+  },
   "crons": [
     {
       "path": "/internal/maintenance.php",

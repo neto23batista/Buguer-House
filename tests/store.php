@@ -14,7 +14,7 @@ $check = static function (bool $condition, string $message) use (&$assertions): 
 };
 $environment = [];
 $originalHostHeader = $_SERVER['HTTP_HOST'] ?? null;
-foreach (['STORE_PICKUP_ADDRESS', 'APP_URL', 'APP_DEMO', 'STORE_CONTACT_PHONE'] as $key) {
+foreach (['STORE_PICKUP_ADDRESS', 'APP_URL', 'STORE_CONTACT_PHONE'] as $key) {
     $environment[$key] = getenv($key);
     putenv($key);
 }
@@ -39,6 +39,32 @@ try {
     $settings['exceptions']['2026-11-24'] = [];
     $check(!storeAvailability($settings, $nextMorning)['accepting'], 'Uma data especial fechada deve substituir o turno da véspera.');
 
+    $hours = $settings;
+    $hours['exceptions'] = [];
+    $hours['schedule'][1] = [['11:00', '14:00'], ['18:00', '22:00']];
+    $check(storeAvailability($hours, $noon->setTime(21, 35))['last_order_label'] === '21:35', 'O último pedido pode ficar pronto exatamente no fechamento.');
+    foreach (['21:35:01', '21:36:00', '21:55:00'] as $time) {
+        $late = storeAvailability($hours, $noon->modify($time));
+        $check(!$late['accepting'] && $late['next_open'] !== null, 'Depois do limite o cliente recebe a próxima abertura.');
+    }
+    $afterLunch = storeAvailability($hours, $noon->setTime(13, 40));
+    $check(str_contains($afterLunch['message'], '18:00'), 'O próximo turno do mesmo dia aparece ao encerrar o almoço.');
+    $hours['schedule'][1] = [['11:00', '18:00'], ['18:00', '02:00']];
+    $check(storeAvailability($hours, $noon->setTime(17, 59))['last_order_label'] === '24/11 · 01:35', 'Turnos sem intervalo somam um único período até a madrugada.');
+    $check(!storeAvailability($hours, $nextMorning->setTime(1, 36))['accepting'], 'O corte continua válido depois da meia-noite.');
+    $hours['exceptions']['2026-11-24'] = [];
+    $check(storeAvailability($hours, $noon->setTime(23, 35))['last_order_label'] === '23:35', 'Feriado fechado encerra o turno da véspera à meia-noite.');
+    $hours['schedule'] = $openSchedule;
+    $hours['exceptions'] = [];
+    $allDay = storeAvailability($hours, $noon->setTime(23, 59));
+    $check($allDay['accepting'] && $allDay['last_order_label'] === null, 'Atendimento contínuo não cria um corte artificial à meia-noite.');
+    $hours['exceptions'] = ['2028-12-25' => []];
+    $check(storeAvailability($hours, $noon)['last_order_label'] === '24/12 · 23:35', 'Um feriado distante encerra um período contínuo.');
+    $hours['schedule'] = array_fill(1, 7, [['12:00', '12:10']]);
+    $hours['exceptions'] = ['2028-12-25' => [['15:00', '18:00']]];
+    $nextLongShift = storeAvailability($hours, $noon);
+    $check($nextLongShift['next_open'] === '2028-12-25T15:00:00-03:00', 'A próxima abertura ignora turnos curtos demais e encontra datas especiais distantes.');
+
     $form = ['pickup_address' => '', 'prep_minutes' => '25', 'schedule' => [], 'exceptions' => []];
     foreach (storeWeekdays() as $day => $label) {
         $form['schedule'][$day] = [['start' => '', 'end' => ''], ['start' => '', 'end' => '']];
@@ -54,12 +80,6 @@ try {
     $check(storePickupAddress(' Rua principal, 12 ') === 'Rua principal, 12', 'O endereço do painel deve prevalecer sobre o alternativo.');
     putenv("STORE_PICKUP_ADDRESS=Rua inválida\n123");
     $check(storePickupAddress('') === '', 'Endereço alternativo inválido deve manter pedidos indisponíveis.');
-
-    $check(!presentationDemoMode(), 'A demonstração deve estar desligada sem configuração.');
-    putenv('APP_DEMO=1');
-    $check(presentationDemoMode(), 'APP_DEMO=1 deve ativar a demonstração.');
-    putenv('APP_DEMO=false');
-    $check(!presentationDemoMode(), 'Uma string falsa não pode ativar a demonstração.');
 
     foreach (['javascript:alert(1)', 'https://user:secret@example.com', 'https://example.com/path', 'https://example.com?token=private', 'https://example.com#fragment', "https://exam\nple.com"] as $url) {
         putenv('APP_URL=' . $url);

@@ -65,6 +65,57 @@ function storeIntervalsOn(array $settings, DateTimeImmutable $date): array
         ?? [];
 }
 
+/** Merge touching shifts. A null end means the regular schedule continues around the clock. */
+function storeServicePeriods(array $settings, DateTimeImmutable $today): Generator
+{
+    // A full regular week repeats until the next exception. Sample both sides of
+    // each exception so a distant holiday doesn't require visiting every date.
+    $anchors = [$today];
+    foreach (array_keys($settings['exceptions']) as $special) {
+        if ($special >= $today->format('Y-m-d')) {
+            $anchors[] = new DateTimeImmutable($special, $today->getTimezone());
+        }
+    }
+    $dates = [];
+    foreach ($anchors as $anchor) {
+        for ($offset = -1; $offset <= 8; $offset++) {
+            $date = $anchor->modify("{$offset} days");
+            $dates[$date->format('Y-m-d')] = $date;
+        }
+    }
+    ksort($dates);
+    $start = $end = $boundary = null;
+    foreach ($dates as $day) {
+        if ($boundary !== null && $day > $boundary && $start !== null) {
+            if ($start <= $boundary->modify('-7 days') && $end >= $boundary) {
+                $end = $day;
+            } else {
+                yield [$start, $end];
+                $start = $end = null;
+            }
+        }
+        $boundary = $day->modify('+1 day');
+        foreach (storeIntervalsOn($settings, $day) as [$from, $to]) {
+            [$first, $last] = storeClockInterval($from, $to);
+            $opens = $day->setTime(intdiv($first, 60), $first % 60);
+            $closes = $day->setTime(intdiv($last, 60), $last % 60);
+            if (array_key_exists($boundary->format('Y-m-d'), $settings['exceptions'])) {
+                $closes = min($closes, $boundary);
+            }
+            if ($start !== null && $opens > $end) {
+                yield [$start, $end];
+                $start = $end = null;
+            }
+            $start ??= $opens;
+            $end = $end === null ? $closes : max($end, $closes);
+        }
+    }
+    if ($start !== null) {
+        $continuous = $start <= $boundary->modify('-7 days') && $end >= $boundary;
+        yield [$start, $continuous ? null : $end];
+    }
+}
+
 function storeAvailability(array $settings, ?DateTimeImmutable $now = null): array
 {
     if (trim((string) ($settings['pickup_address'] ?? '')) === '') {
@@ -87,69 +138,47 @@ function storeAvailability(array $settings, ?DateTimeImmutable $now = null): arr
         ];
     }
 
+    return storeHoursAvailability($settings, $now);
+}
+
+function storeHoursAvailability(array $settings, ?DateTimeImmutable $now = null): array
+{
     $zone = new DateTimeZone('America/Sao_Paulo');
     $local = ($now ?? new DateTimeImmutable('now', $zone))->setTimezone($zone);
-    $today = $local->setTime(0, 0);
-    $minute = storeClockMinutes($local->format('H:i'));
-    $isException = array_key_exists($today->format('Y-m-d'), $settings['exceptions']);
+    $minutes = (int) $settings['prep_minutes'];
+    $expired = null;
     $next = null;
-
-    if (!$isException) {
-        foreach (storeIntervalsOn($settings, $today->modify('-1 day')) as [$start, $end]) {
-            [, $until] = storeClockInterval($start, $end);
-            if ($minute + 1440 < $until) {
-                return storeOpenStatus($settings['prep_minutes']);
-            }
+    foreach (storeServicePeriods($settings, $local->setTime(0, 0)) as [$start, $end]) {
+        $cutoff = $end?->modify("-{$minutes} minutes");
+        if ($cutoff !== null && ($cutoff < $start || $end <= $local)) {
+            continue;
         }
-    }
-
-    // Each special date can override at most one matching weekday in the search.
-    $searchDays = (count($settings['exceptions']) + 1) * 7;
-    for ($offset = 0; $offset <= $searchDays; $offset++) {
-        $date = $today->modify("+{$offset} days");
-        foreach (storeIntervalsOn($settings, $date) as [$start, $end]) {
-            [$from, $until] = storeClockInterval($start, $end);
-            if ($offset === 0 && $minute >= $from && $minute < $until) {
-                return storeOpenStatus($settings['prep_minutes']);
-            }
-            if ($offset > 0 || $minute < $from) {
-                $next = $date->setTime(intdiv($from, 60), $from % 60);
-                break 2;
-            }
+        if ($start > $local) {
+            $next = $start;
+            break;
         }
-    }
-
-    if ($next === null) {
-        // A store with all weekdays closed can still open at a distant special date.
-        $exceptions = $settings['exceptions'];
-        ksort($exceptions);
-        foreach ($exceptions as $date => $intervals) {
-            if ($date > $today->format('Y-m-d') && $intervals) {
-                $next = new DateTimeImmutable($date . ' ' . $intervals[0][0], $zone);
-                break;
-            }
+        if ($cutoff !== null && $local->getTimestamp() > $cutoff->getTimestamp()) {
+            $expired = $cutoff;
+            continue;
         }
+        $limit = $cutoff?->format($cutoff->format('Y-m-d') === $local->format('Y-m-d') ? 'H:i' : 'd/m · H:i');
+        return [
+            'accepting' => true, 'state' => 'open', 'label' => 'Aberta',
+            'message' => "Previsão de retirada em {$minutes} min. " . ($limit === null ? 'Atendimento 24 horas.' : "Último pedido do turno às {$limit}."),
+            'last_order_label' => $limit, 'next_open' => null,
+        ];
     }
-
+    $message = $next === null ? 'A loja está fechada para novos pedidos.'
+        : 'Próxima abertura em ' . $next->format('d/m') . ' às ' . $next->format('H:i') . '.';
+    if ($expired !== null) {
+        $message = 'O prazo deste turno terminou às ' . $expired->format('H:i') . '. ' . $message;
+    }
     return [
         'accepting' => false,
         'state' => 'closed',
         'label' => 'Fechada',
-        'message' => $next === null
-            ? 'A loja está fechada para novos pedidos.'
-            : 'Próxima abertura em ' . $next->format('d/m') . ' às ' . $next->format('H:i') . '.',
+        'message' => $message,
         'next_open' => $next?->format(DATE_ATOM),
-    ];
-}
-
-function storeOpenStatus(int $minutes): array
-{
-    return [
-        'accepting' => true,
-        'state' => 'open',
-        'label' => 'Aberta',
-        'message' => "Previsão de retirada em {$minutes} min.",
-        'next_open' => null,
     ];
 }
 

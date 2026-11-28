@@ -2,22 +2,24 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/cash.php';
+
 function orderTrackingToken(string $checkoutToken): string
 {
     // Use the raw checkout token held by the originating session. The database stores its digest.
     return hash_hmac('sha256', 'burger-house:order-tracking:v1', $checkoutToken);
 }
 
-function saveOrderTracking(PDO $db, int $id, string $checkoutToken, array $store): void
+function saveOrderTracking(PDO $db, int $id, string $checkoutToken, array $store, DateTimeImmutable $confirmedAt): void
 {
-    $day = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
+    $day = $confirmedAt->format('Y-m-d');
     $sequence = $db->prepare('INSERT INTO pickup_sequences(pickup_day,last_number) VALUES (?,1)
         ON DUPLICATE KEY UPDATE last_number=last_number+1');
     $sequence->execute([$day]);
     $db->prepare('INSERT INTO pickup_tickets(order_id,pickup_day,ticket_number)
         SELECT ?,pickup_day,last_number FROM pickup_sequences WHERE pickup_day=?')->execute([$id, $day]);
 
-    $expectedAt = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->modify('+' . (int) $store['prep_minutes'] . ' minutes');
+    $expectedAt = $confirmedAt->setTimezone(new DateTimeZone('UTC'))->modify('+' . (int) $store['prep_minutes'] . ' minutes');
     $query = $db->prepare(
         'INSERT INTO order_tracking (order_id, token_hash, expires_at, pickup_at, pickup_address)
          VALUES (?, ?, UTC_TIMESTAMP() + INTERVAL 3 DAY, ?, ?)',
@@ -30,7 +32,7 @@ function orderTrackingDetails(PDO $db, string $code): ?array
 {
     $query = $db->prepare(
         'SELECT orders.id, orders.public_code, orders.status, orders.total_cents, orders.created_at,
-                payment.method AS payment_method, ticket.ticket_number, ticket.pickup_day, tracking.token_hash, tracking.pickup_at, tracking.pickup_address,
+                ' . EFFECTIVE_PAYMENT_METHOD_SQL . ' AS payment_method, ticket.ticket_number, ticket.pickup_day, tracking.token_hash, tracking.pickup_at, tracking.pickup_address,
                 (SELECT event.customer_reason FROM order_status_events AS event
                  WHERE event.order_id = orders.id AND event.next_status = \'cancelled\' ORDER BY event.id DESC LIMIT 1) AS customer_reason,
                 tracking.expires_at > UTC_TIMESTAMP() AS is_current

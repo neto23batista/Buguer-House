@@ -35,7 +35,6 @@ $store = null;
 $availability = null;
 $cartReview = $_SESSION['cart_review'] ?? '';
 $statuses = orderStatuses();
-$isDemo = presentationDemoMode();
 
 try {
     if ($isReceipt) {
@@ -234,9 +233,6 @@ if ($polling) {
     </header>
 
     <main class="shell checkout-main" id="checkout-main" tabindex="-1">
-        <?php if ($isDemo): ?>
-            <aside class="demo-notice" aria-label="Ambiente de teste"><strong>Pedido de teste</strong> · Use dados fictícios. Nenhuma compra será realizada.</aside>
-        <?php endif; ?>
         <?php if ($unavailable): ?>
             <div class="checkout-state checkout-card">
                 <h1>Pedido indisponível</h1>
@@ -302,9 +298,6 @@ if ($polling) {
             <?php if ($errors): ?>
                 <p class="checkout-alert" role="alert"><?= escape($errors['form'] ?? 'Confira os campos destacados antes de enviar.') ?></p>
             <?php endif; ?>
-            <?php if (!$availability['accepting'] && ($errors['form'] ?? null) !== $availability['message']): ?>
-                <p class="checkout-alert" role="status"><?= escape($availability['message']) ?></p>
-            <?php endif; ?>
             <?php if ($cartReview !== ''): ?><p class="checkout-alert" role="status"><?= escape($cartReview) ?></p><?php endif; ?>
             <form class="checkout-grid" method="post" action="checkout.php" data-checkout-form>
                 <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
@@ -313,12 +306,12 @@ if ($polling) {
                     <h2 id="customer-title">Seus dados</h2>
                     <div class="checkout-field">
                         <label for="customer-name">Nome</label>
-                        <input id="customer-name" name="name" required maxlength="100" autocomplete="<?= $isDemo ? 'off' : 'name' ?>" value="<?= escape($customer['name']) ?>" <?= isset($errors['name']) ? 'aria-invalid="true" aria-describedby="name-error"' : '' ?>>
+                        <input id="customer-name" name="name" required maxlength="100" autocomplete="name" value="<?= escape($customer['name']) ?>" <?= isset($errors['name']) ? 'aria-invalid="true" aria-describedby="name-error"' : '' ?>>
                         <?php if (isset($errors['name'])): ?><span class="field-error" id="name-error"><?= escape($errors['name']) ?></span><?php endif; ?>
                     </div>
                     <div class="checkout-field">
                         <label for="customer-phone">Telefone com DDD</label>
-                        <input id="customer-phone" name="phone" type="tel" required maxlength="25" autocomplete="<?= $isDemo ? 'off' : 'tel' ?>" placeholder="<?= $isDemo ? '(11) 90000-0000' : '(11) 91234-5678' ?>" value="<?= escape($customer['phone']) ?>" <?= isset($errors['phone']) ? 'aria-invalid="true" aria-describedby="phone-error"' : '' ?>>
+                        <input id="customer-phone" name="phone" type="tel" required maxlength="25" autocomplete="tel" placeholder="(11) 91234-5678" value="<?= escape($customer['phone']) ?>" <?= isset($errors['phone']) ? 'aria-invalid="true" aria-describedby="phone-error"' : '' ?>>
                         <?php if (isset($errors['phone'])): ?><span class="field-error" id="phone-error"><?= escape($errors['phone']) ?></span><?php endif; ?>
                     </div>
                     <div class="checkout-field">
@@ -340,12 +333,13 @@ if ($polling) {
                             <div><dt>Endereço</dt><dd><?= escape($pickupAddress) ?></dd></div>
                         <?php endif; ?>
                         <div><dt>Pagamento</dt><dd>Na retirada</dd></div>
-                        <?php if ($availability['accepting']): ?>
-                            <div><dt>Preparo estimado</dt><dd><?= $store['prep_minutes'] ?> min</dd></div>
+                        <div><dt>Preparo estimado</dt><dd><?= $store['prep_minutes'] ?> min</dd></div>
+                        <?php if ($availability['last_order_label'] !== null): ?>
+                            <div><dt>Último pedido do turno</dt><dd><?= escape($availability['last_order_label']) ?></dd></div>
                         <?php endif; ?>
                     </dl>
                     <div class="summary-total"><span>Total</span><strong><?= price($cart['totalCents']) ?></strong></div>
-                    <button class="primary-button submit-order" type="submit" data-submit-order <?= $availability['accepting'] ? '' : 'disabled' ?>><?= $isDemo ? 'Enviar pedido de teste' : 'Enviar pedido' ?> <span aria-hidden="true">→</span></button>
+                    <button class="primary-button submit-order" type="submit" data-submit-order <?= $availability['accepting'] ? '' : 'disabled' ?>>Enviar pedido <span aria-hidden="true">→</span></button>
                     <p role="status" data-checkout-progress hidden></p>
                 </aside>
             </form>

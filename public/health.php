@@ -13,7 +13,8 @@ try {
     if ($db->query('SELECT id FROM store_settings WHERE id = 1')->fetchColumn() === false) {
         throw new RuntimeException('Configurações da loja ausentes.');
     }
-    $db->query('SELECT session_id FROM web_sessions LIMIT 1');
+    $db->query('SELECT EXISTS(SELECT session_id FROM web_sessions), EXISTS(SELECT ticket_number FROM pickup_tickets),
+        EXISTS(SELECT method FROM payments), EXISTS(SELECT revision FROM payment_method_changes)');
     echo '{"status":"ok"}';
 } catch (Throwable $exception) {
     error_log('Burger House health: ' . $exception->getMessage());

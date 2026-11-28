@@ -10,7 +10,7 @@ Aplicação PHP/MySQL para hamburgueria: cardápio responsivo, carrinho, checkou
 
 </details>
 
-<details><summary>Acompanhamento do pedido de demonstração</summary>
+<details><summary>Acompanhamento do pedido</summary>
 
 ![Acompanhamento do pedido](docs/screenshots/order-tracking.png)
 
@@ -18,7 +18,7 @@ Aplicação PHP/MySQL para hamburgueria: cardápio responsivo, carrinho, checkou
 
 ## Executar com Docker
 
-Requisitos: Docker Engine com Compose. A imagem contém FrankenPHP, PHP 8.4 e `pdo_mysql`; o Compose fornece MySQL 8.4 com volume persistente.
+Requisitos: Docker Engine com Compose. A imagem contém FrankenPHP, PHP 8.4, `pdo_mysql` e GD; o Compose fornece MySQL 8.4 com volume persistente.
 
 ```powershell
 Copy-Item .env.example .env
@@ -27,7 +27,7 @@ docker compose up --build -d
 
 No Bash, use `cp .env.example .env`. Abra [a loja](http://localhost:8080) e [o painel](http://localhost:8080/admin/). O serviço `migrate` aplica o banco antes de iniciar `web`; consulte erros com `docker compose logs migrate web`. O Compose destina-se ao desenvolvimento local, com HTTP e senhas de exemplo. O volume `mysql-data` preserva os dados quando os containers são recriados.
 
-A primeira instalação começa **pausada e sem endereço**. Configure acesso administrativo, endereço, horários, produtos e preços antes de receber pedidos. `APP_DEMO=1` identifica a apresentação como demonstração; o checkout depende das configurações reais da loja.
+A primeira instalação começa **pausada e sem endereço**. Configure acesso administrativo, endereço, horários, produtos e preços antes de receber pedidos. A aplicação trabalha com pedidos reais; testes devem usar uma instalação e um banco separados.
 
 Para criar a senha administrativa no PowerShell:
 
@@ -40,7 +40,7 @@ Se não houver PHP instalado, substitua `php` por `docker compose run --rm -T --
 
 ## Executar sem Docker
 
-Requisitos: PHP 8.1 ou superior com `pdo_mysql`, MySQL 8.0.22 ou superior (ou TiDB, conforme seção abaixo) e um banco previamente provisionado. Para desenvolvimento local, crie o banco com um usuário administrativo:
+Requisitos: PHP 8.1 ou superior com `pdo_mysql` e GD, MySQL 8.0.22 ou superior (ou TiDB, conforme seção abaixo) e um banco previamente provisionado. Para desenvolvimento local, crie o banco com um usuário administrativo:
 
 ```sql
 CREATE DATABASE burger_house CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -72,6 +72,8 @@ O comando seleciona o banco de `DB_NAME`, que já deve existir. Não cria banco 
 
 `schema_migrations` registra versão, checksum e data; um advisory lock do MySQL impede dois migradores simultâneos. Executar novamente não reaplica versões registradas. O comando recusa arquivos históricos cujo checksum mudou; crie nova migração e acrescente-a ao manifesto de `bin/migrate.php`. O checksum normaliza quebras de linha Windows/Linux. Como DDL do MySQL confirma implicitamente, cada arquivo deve permitir nova execução após falha parcial. Faça backup antes de atualizar uma instalação com dados.
 
+`php bin/migrate.php --check` confere em leitura os registros e checksums exigidos por esta revisão. Uma migração pendente, um histórico divergente ou uma falha de conexão encerra o comando com código diferente de zero.
+
 Os SQLs usam o banco da conexão. `report-indexes.sql` verifica `INFORMATION_SCHEMA` antes de criar índices, inclusive em tabelas antigas. O servidor web não aplica migrações: execute-as antes de direcionar tráfego à nova versão.
 
 ## TiDB Cloud Starter
@@ -92,7 +94,7 @@ Provisione MySQL externo compatível, preferencialmente na mesma região da apli
 
 Configure no painel da hospedagem:
 
-- `APP_ENV=production` e `APP_URL=https://seu-dominio`. Use `APP_DEMO=1` para o portfólio; mude para `0` somente no atendimento real.
+- `APP_ENV=production` e `APP_URL=https://seu-dominio` com a origem pública definitiva.
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` e `DB_PASSWORD` do MySQL externo.
 - `DB_SSL_REQUIRED=1`; use **uma** opção de CA: `DB_SSL_CA` com caminho legível ou `DB_SSL_CA_BASE64` com o PEM codificado. A imagem também possui CAs do sistema para certificados públicos.
 - `SESSION_DRIVER=mysql`, `SESSION_TTL_SECONDS=43200` e `SESSION_COOKIE_SECURE=1`.
@@ -100,7 +102,7 @@ Configure no painel da hospedagem:
 - `STORE_CONTACT_PHONE` para publicar o telefone verdadeiro com DDD. Endereço e horários são configurados no painel; `STORE_PICKUP_ADDRESS` é alternativa quando o cadastro está vazio.
 - `TRUSTED_PROXIES` com os endereços/CIDRs reais do ingress autorizado pela hospedagem. O rate limit usa `REMOTE_ADDR`; confirme o IP do cliente antes da abertura. Não confie em toda a internet como proxy.
 
-Produção exige sessões MySQL, cookies `Secure` e TLS verificado para banco remoto. `DB_CONNECT_TIMEOUT` tem padrão de 5 segundos e `DB_READ_TIMEOUT`, de 10 segundos. Cadastre segredos na hospedagem; não os inclua na imagem nem no Git.
+Produção exige sessões MySQL, cookies `Secure` e TLS verificado para banco remoto. `DB_CONNECT_TIMEOUT` tem padrão de 5 segundos e `DB_READ_TIMEOUT`, de 10 segundos. Use `.env.production.example` como referência das variáveis e preencha os valores vazios com os dados da loja. Cadastre segredos na hospedagem; não os inclua na imagem nem no Git. `.env.example` e o Compose são destinados ao desenvolvimento local.
 
 Antes do primeiro deploy, execute migrações com as mesmas variáveis do banco. Exemplo com arquivo privado ignorado pelo Git:
 
@@ -111,11 +113,27 @@ docker run --rm --env-file .env.production burger-house php bin/migrate.php
 
 O formato de `docker run --env-file` usa valores literais: nesse arquivo, escreva hashes sem aspas. As aspas simples indicadas para `.env` pertencem ao formato do Docker Compose.
 
-Use credencial de migração com permissões de criação/alteração; a aplicação pode usar outra mais restrita. Confirme `GET /health.php` com resposta `200` e `{"status":"ok"}`, faça login e revise a loja antes de despausar. O healthcheck verifica banco, configurações e tabela de sessões sem divulgar credenciais.
+Com a revisão aprovada em Git, o projeto vinculado pela CLI da Vercel e as permissões do banco atualizadas, publique pelo PowerShell:
+
+```powershell
+.\bin\publish.ps1 -MigrationEnv 'C:\segredos\burger-house\migration.env'
+```
+
+O arquivo privado deve apontar para o mesmo banco usado pela loja. O comando exporta o commit atual, executa `--check` com a credencial de implantação e prepara a versão na Vercel. O domínio recebe a versão após a resposta saudável de `/health.php` com a conta web. O push de `main` está configurado para publicação por esse fluxo.
+
+## Preparar a primeira loja
+
+1. Provisione o banco de produção separado da instalação de desenvolvimento/homologação. Aplique as migrações e configure backup com restauração verificada. Não copie os pedidos usados nos testes para a operação real.
+2. Configure o domínio com HTTPS e as variáveis de `.env.production.example` na hospedagem. Use credenciais próprias para o dono, o banco e a manutenção; mantenha a loja pausada durante a preparação.
+3. No painel, confira endereço de retirada, prazo, horários e exceções. Configure o telefone de contato por `STORE_CONTACT_PHONE` na hospedagem. Revise nomes, descrições, fotos, disponibilidade e preços de todos os produtos: o catálogo inicial é apenas um ponto de partida.
+4. Crie os acessos individuais em Equipe e valide, em homologação, um pedido completo: carrinho, confirmação, acompanhamento privado, senha de retirada, cozinha, pagamento presencial e fechamento/reabertura do caixa.
+5. Execute os testes com banco dedicado conforme a seção Testes. Na produção, confira `/health.php`, login, cardápio e configurações; só então despause a loja no painel para receber pedidos reais.
+
+O checkout registra pedidos para retirada no balcão; o pagamento é registrado pela equipe no momento da retirada. Não há cobrança online. Sem o cadastro e a validação da loja, a preparação do código não representa liberação para atendimento.
 
 ## Permissões do banco
 
-Esta atualização acrescenta as migrações 009 a 013. Aplique-as com `php bin/migrate.php` antes de ativar a nova versão e confira os privilégios abaixo.
+A migração 014 acrescenta o histórico de correções de recebimentos. Aplique as migrações com `php bin/migrate.php` antes de ativar a nova versão e confira os privilégios abaixo.
 
 A conta de migração precisa criar/alterar tabelas e índices e ler/gravar os dados iniciais. Em produção, a conta web precisa somente:
 
@@ -125,7 +143,7 @@ A conta de migração precisa criar/alterar tabelas e índices e ler/gravar os d
 - `store_settings`: `SELECT` e `UPDATE(pickup_address, prep_minutes, paused, schedule, exceptions, revision)`.
 - `product_photos`: `SELECT`, `INSERT`, `UPDATE(digest)`. Fotos enviadas fazem parte do backup do banco.
 - `staff_accounts`: `SELECT`, `INSERT`, `UPDATE(password_hash, active, revision)`.
-- `pickup_sequences`: `SELECT`, `INSERT`, `UPDATE(last_number)`. Em `pickup_tickets`, `payments` e `cash_events`: `SELECT`, `INSERT`.
+- `pickup_sequences`: `SELECT`, `INSERT`, `UPDATE(last_number)`. Em `pickup_tickets`, `payments`, `payment_method_changes` e `cash_events`: `SELECT`, `INSERT`.
 - `cash_days`: `SELECT`, `INSERT`, `UPDATE(business_date, counted_cents, closed_by, closed_at, revision)`.
 - `web_sessions`, `admin_login_attempts` e `order_rate_limits`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
 
@@ -136,6 +154,10 @@ A conta web não precisa de acesso a `schema_migrations`, `mysql.user`, `CREATE`
 O dono acessa Pedidos, Cozinha, Cardápio, Loja, Relatórios, Equipe e Caixa. Em Equipe, cria logins individuais de operador, troca senhas e desativa acessos. A troca de senha e a desativação invalidam as sessões do colaborador. Os logins existentes no ambiente continuam disponíveis.
 
 Cada novo pedido recebe uma senha numérica por dia de criação (horário de Brasília). No balcão, a busca aceita essa senha com a data ou o código completo, inclusive de pedidos antigos. O acompanhamento externo requer o link privado.
+
+O cardápio e a confirmação descontam o tempo de preparo do fim do atendimento contínuo. Com fechamento às 22h e preparo de 25 minutos, o último pedido entra às 21h35 em ponto. Turnos encostados e horários de madrugada contam como um único período. Datas especiais substituem o horário daquela data.
+
+Na retirada, confira o total do cartão da cozinha e registre a forma recebida. No extrato do caixa, o dono pode expandir o pagamento e corrigir a forma mediante justificativa. Para um dia fechado, reabra o caixa, faça a correção e confira os valores antes de fechar novamente. O extrato guarda responsável, horário e formas anterior e nova de cada correção.
 
 Ao concluir uma retirada, o atendente registra dinheiro, Pix ou cartão. O caixa contabiliza os recebimentos pelo dia local de pagamento. Para fechar, informe apenas o dinheiro das vendas, descontando o fundo de troco. O responsável pode consultar dias anteriores e reabrir um caixa para novos recebimentos. O histórico registra o responsável e a diferença entre contado e esperado. O caixa contabiliza os pagamentos registrados a partir da implantação.
 
@@ -248,7 +270,7 @@ npm run test:e2e
 
 O runner só aceita banco local dedicado, inicia e encerra um servidor PHP isolado e restaura as fixtures. Chromium desktop e celular verificam modal/foco/teclado, perda de sessão, desconexão sem repetição de POST e feedback/envio único do checkout. O cenário de envio único intercepta a resposta. Os cenários de operação criam pedidos fictícios no banco dedicado, verificam cozinha, acompanhamento e relatório e removem os pedidos ao terminar. PHP de produção não depende de Node ou Playwright.
 
-Teste manual: configure endereço e horários e despause a loja. Adicione dois House Smash e uma Fritas da Casa ao catálogo inicial: total R$ 72,70. Confirme, acompanhe a cozinha e marque como pronto e concluído. Abra o link privado em outro navegador. Os preços de demonstração podem ter sido editados pelo dono.
+Teste manual em homologação: configure endereço e horários e despause a instalação de teste. Adicione itens ao carrinho e confira o total com os preços cadastrados. Confirme, acompanhe a cozinha e marque como pronto e concluído, informando o pagamento. Abra o link privado em outro navegador e confira o fechamento do caixa. Use dados fictícios e um banco separado da operação real.
 
 ## Decisões técnicas
 
